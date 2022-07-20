@@ -75,7 +75,7 @@ class ConfigurationManager:
                 raise AttributeError(msg)
 
             if rule_name == 'records':
-                manager = mod_records.RecordEntry
+                manager = mod_records.RecordGroup
             elif rule_name == 'audit_rules':
                 manager = mod_audit.AuditRule
             elif rule_name == 'bank_rules':

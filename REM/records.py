@@ -25,35 +25,35 @@ import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
 
 
-class RecordEntry:
+class RecordGroup:
     """
     Attributes:
-        name (str): name of the record entry.
+        name (str): name of the record group.
 
-        program_record (bool): record entry is a program record [Default: True].
+        program_record (bool): records in the record group are program records [Default: True].
 
         permissions (dict): dictionary mapping permission rules to permission groups
     """
 
     def __init__(self, name, entry):
         """
-        Configuration record entry.
+        Record group configuration.
 
         Arguments:
-            name (str): name of the record entry.
+            name (str): name of the record group.
 
-            entry (dict): configuration entry for the record.
+            entry (dict): configuration entry for the record group.
         """
         self.name = name
 
-        # Specify whether a record entry is a program record or an external record
+        # Specify whether a record group is a program record or an external record
         try:
             self.program_record = bool(int(entry['ProgramRecord']))
         except KeyError:  # parameter not specified
             self.program_record = True
         except ValueError:  # wrong data type provided to parameter
             msg = 'Configuration Error: "ProgramRecord" must be either 0 (False) or 1 (True)'
-            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             mod_win2.popup_error(msg)
 
             self.program_record = True
@@ -89,7 +89,7 @@ class RecordEntry:
         try:
             self.id_code = entry['IDCode']
         except KeyError:
-            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "IDCode"'
+            mod_win2.popup_error('RecordGroup {NAME}: configuration missing required parameter "IDCode"'
                                  .format(NAME=name))
             sys.exit(1)
 
@@ -97,7 +97,7 @@ class RecordEntry:
         try:
             import_rules = entry['ImportRules']
         except KeyError:
-            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "ImportRules"'
+            mod_win2.popup_error('RecordGroup {NAME}: configuration missing required parameter "ImportRules"'
                                  .format(NAME=name))
             sys.exit(1)
         else:
@@ -151,7 +151,7 @@ class RecordEntry:
         try:
             association_rules = entry['AssociationRules']
         except KeyError:
-            logger.info('RecordsEntry {NAME}: no association rules specified for the record entry'
+            logger.info('RecordGroup {NAME}: no association rules specified for the record group'
                         .format(NAME=self.name))
             association_rules = {}
 
@@ -160,13 +160,13 @@ class RecordEntry:
             rule = association_rules[rule_name]
 
             if 'Primary' not in rule:
-                msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "Primary"' \
+                msg = 'RecordGroup {NAME}: AssociationRule {RULE} is missing required parameter "Primary"' \
                     .format(NAME=self.name, RULE=rule_name)
 
                 raise AttributeError(msg)
 
             if 'ReferenceTable' not in rule:
-                msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "ReferenceTable"' \
+                msg = 'RecordGroup {NAME}: AssociationRule {RULE} is missing required parameter "ReferenceTable"' \
                     .format(NAME=self.name, RULE=rule_name)
 
                 raise AttributeError(msg)
@@ -177,7 +177,7 @@ class RecordEntry:
             if 'AssociationType' in rule:
                 assoc_type = rule['AssociationType']
                 if assoc_type not in ('parent', 'child', 'reference'):
-                    msg = 'RecordEntry {NAME}: unknown association type {TYPE} provided to association rule {RULE}' \
+                    msg = 'RecordGroup {NAME}: unknown association type {TYPE} provided to association rule {RULE}' \
                         .format(NAME=self.name, TYPE=assoc_type, RULE=rule_name)
 
                     raise AttributeError(msg)
@@ -191,7 +191,7 @@ class RecordEntry:
         try:
             self.import_table = entry['ImportTable']
         except KeyError:
-            msg = 'RecordEntry {NAME}: missing configuration parameter "ImportTable"'.format(NAME=self.name)
+            msg = 'RecordGroup {NAME}: missing configuration parameter "ImportTable"'.format(NAME=self.name)
             logger.warning(msg)
 
             self.import_table = {}
@@ -235,13 +235,13 @@ class RecordEntry:
                 operator = filter_entry[0].upper()
             except (IndexError, AttributeError):
                 msg = 'no valid operator set for import filter {COL}'.format(COL=filter_column)
-                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 continue
             else:
                 if operator not in operators:
                     msg = 'no valid operator set for import filter {COL}'.format(COL=filter_column)
-                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     continue
 
@@ -249,7 +249,7 @@ class RecordEntry:
                 parameters = filter_entry[1:]
             except IndexError:
                 msg = 'one or more import values required for filter column {COL}'.format(COL=filter_column)
-                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 continue
             else:
@@ -363,7 +363,7 @@ class RecordEntry:
                     db = database
                 else:
                     msg = 'database {DB} is not an available program database'.format(DB=database)
-                    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     db = settings.dbname
             else:
@@ -573,9 +573,9 @@ class RecordEntry:
             try:
                 assoc_entry = association_rules[association_name]
             except KeyError:
-                msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                msg = 'association rule {RULE} not found in the set of association rules for the record group' \
                     .format(RULE=association_name)
-                logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.exception('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 raise ImportError(msg)
 
@@ -633,9 +633,9 @@ class RecordEntry:
         try:
             rule = association_rules[rule_name]
         except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+            msg = 'association rule {RULE} not found in the set of association rules for the record group' \
                 .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.exception('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise ImportError(msg)
 
@@ -777,9 +777,9 @@ class RecordEntry:
         try:
             rule = association_rules[rule_name]
         except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+            msg = 'association rule {RULE} not found in the set of association rules for the record group' \
                 .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.exception('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise ImportError(msg)
 
@@ -843,16 +843,16 @@ class RecordEntry:
             raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
 
         if df.empty:
-            logger.warning('RecordEntry {NAME}: no reference entries provided for deleting'.format(NAME=self.name))
+            logger.warning('RecordGroup {NAME}: no reference entries provided for deleting'.format(NAME=self.name))
             return statements
 
         association_rules = self.association_rules
         try:
             rule = association_rules[rule_name]
         except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+            msg = 'association rule {RULE} not found in the set of association rules for the record group' \
                 .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.exception('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise ImportError(msg)
 
@@ -910,8 +910,8 @@ class RecordEntry:
             statements = {}
 
         if not self.program_record:
-            msg = 'unable to modify database records for record entry {NAME} - record entry {NAME} is not a program ' \
-                  'record'.format(NAME=self.name)
+            msg = 'unable to modify database records for record group {NAME} - {NAME} is an external record group'\
+                .format(NAME=self.name)
             logger.warning(msg)
 
             return statements
@@ -948,7 +948,7 @@ class RecordEntry:
             try:
                 id_col = export_col_map[id_field]
             except KeyError:
-                msg = 'RecordEntry {NAME}: missing ID column "{COL}" from record import columns {COLS}' \
+                msg = 'RecordGroup {NAME}: missing ID column "{COL}" from record import columns {COLS}' \
                     .format(NAME=self.name, COL=id_field, COLS=list(export_col_map.keys()))
                 logger.error(msg)
 
@@ -1022,7 +1022,7 @@ class RecordEntry:
                         colmap = link_rule['ColumnMap']
                     except KeyError:
                         msg = 'missing required HardLink parameter "ColumnMap"'
-                        logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                         raise KeyError(msg)
 
@@ -1096,7 +1096,7 @@ class RecordEntry:
                     except KeyError:
                         msg = 'failed to create IDs for the new records - failed to create associated "{TYPE}" ' \
                               'records'.format(TYPE=record_type, RTYPE=ref_type)
-                        logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                         raise KeyError(msg)
                     else:
@@ -1145,8 +1145,8 @@ class RecordEntry:
             statements = {}
 
         if not self.program_record:
-            msg = 'unable to modify database records for record entry {NAME} - record entry {NAME} is not a program ' \
-                  'record'.format(NAME=self.name)
+            msg = 'unable to modify database records for record group {NAME} - {NAME} is an external record group'\
+                .format(NAME=self.name)
             logger.warning(msg)
 
             return statements
@@ -1239,7 +1239,7 @@ class RecordEntry:
                 if record_entry is None:
                     msg = 'unable to delete dependant records of record type "{TYPE}"' \
                         .format(TYPE=record_type)
-                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     raise AttributeError(msg)
 
@@ -1357,10 +1357,10 @@ class RecordEntry:
                 id_date = (strptime(record_date.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S')
                            + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
 
-            logger.debug('RecordEntry {NAME}: new ID has date component {COMP}'.format(NAME=record_type, COMP=id_date))
+            logger.debug('RecordGroup {NAME}: new ID has date component {COMP}'.format(NAME=record_type, COMP=id_date))
 
             # Search list of unsaved IDs occurring within the current date cycle
-            logger.debug('RecordEntry {NAME}: searching for unsaved record IDs with date component {DATE}'
+            logger.debug('RecordGroup {NAME}: searching for unsaved record IDs with date component {DATE}'
                          .format(NAME=record_type, DATE=id_date))
             prev_ids = []
             for unsaved_id in unsaved_ids:
@@ -1368,11 +1368,11 @@ class RecordEntry:
                 if prev_date == id_date:
                     prev_ids.append(unsaved_id)
 
-            logger.debug('RecordEntry {NAME}: found {NUM} unsaved records with date component {DATE}'
+            logger.debug('RecordGroup {NAME}: found {NUM} unsaved records with date component {DATE}'
                          .format(NAME=record_type, NUM=len(prev_ids), DATE=id_date))
 
             # Search list of saved IDs occurring within the current date cycle
-            logger.debug('RecordEntry {NAME}: searching for database record IDs with date component {DATE}'
+            logger.debug('RecordGroup {NAME}: searching for database record IDs with date component {DATE}'
                          .format(NAME=record_type, DATE=id_date))
 
             for saved_id in saved_ids:
@@ -1381,7 +1381,7 @@ class RecordEntry:
                     prev_ids.append(saved_id)
 
             # Get the number of the last ID used in the current date cycle
-            logger.debug('RecordEntry {NAME}: found {NUM} records with date component {DATE}'
+            logger.debug('RecordGroup {NAME}: found {NUM} records with date component {DATE}'
                          .format(NAME=self.name, NUM=len(prev_ids), DATE=id_date))
 
             if len(prev_ids) > 0:
@@ -1392,23 +1392,23 @@ class RecordEntry:
 
             # Create the new ID
             if last_id:
-                logger.debug('RecordEntry {NAME}: last ID encountered is {ID}'.format(NAME=record_type, ID=last_id))
+                logger.debug('RecordGroup {NAME}: last ID encountered is {ID}'.format(NAME=record_type, ID=last_id))
                 try:
                     last_num = int(last_id.split('-')[-1])
                 except ValueError:
-                    msg = 'RecordEntry {NAME}: incorrect formatting for previous ID {ID}' \
+                    msg = 'RecordGroup {NAME}: incorrect formatting for previous ID {ID}' \
                         .format(NAME=record_type, ID=last_id)
                     logger.error(msg)
                     record_ids.append(None)
                     continue
             else:
-                logger.debug('RecordEntry {NAME}: no previous IDs found for date {DATE} - starting new iteration at 1'
+                logger.debug('RecordGroup {NAME}: no previous IDs found for date {DATE} - starting new iteration at 1'
                              .format(NAME=record_type, DATE=id_date))
                 last_num = 0
 
             record_id = '{CODE}{DATE}-{NUM}'.format(CODE=id_code, DATE=id_date, NUM=str(last_num + 1).zfill(4))
 
-            logger.info('RecordEntry {NAME}: new record ID is {ID}'.format(NAME=record_type, ID=record_id))
+            logger.info('RecordGroup {NAME}: new record ID is {ID}'.format(NAME=record_type, ID=record_id))
             record_ids.append(record_id)
             unsaved_ids.append(record_id)
 
@@ -1450,7 +1450,7 @@ class RecordEntry:
 
         Arguments:
             record_ids (list): optional list of record IDs to remove from the set of unsaved record IDs with ID code
-                corresponding to the ID code configured for the record entry.
+                corresponding to the ID code configured for the record group.
 
             internal_only (bool): only remove recordIDs from the unsaved record IDs if they were created within the
                 program instance.
@@ -1468,10 +1468,10 @@ class RecordEntry:
             remove_ids = unsaved_ids
 
         if not len(record_ids) > 0:
-            logger.debug('RecordEntry {NAME}: no unsaved record IDs to remove'.format(NAME=self.name))
+            logger.debug('RecordGroup {NAME}: no unsaved record IDs to remove'.format(NAME=self.name))
             return True
 
-        logger.debug('RecordEntry {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
+        logger.debug('RecordGroup {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
                      .format(NAME=self.name, ID=remove_ids))
 
         value = {'ids': remove_ids, 'id_code': self.id_code}
@@ -1481,12 +1481,12 @@ class RecordEntry:
 
         success = response['success']
         if success is False:
-            msg = 'RecordEntry {NAME}: failed to remove IDs {ID} from the list of unsaved record IDs of type ' \
+            msg = 'RecordGroup {NAME}: failed to remove IDs {ID} from the list of unsaved record IDs of type ' \
                   '{TYPE} - {ERR}'.format(NAME=self.name, ID=remove_ids, TYPE=self.name, ERR=response['value'])
             logger.error(msg)
         else:
-            logger.debug('RecordEntry {NAME}: successfully removed {ID} from the list of unsaved record IDs '
-                         'associated with the record entry'.format(NAME=self.name, ID=remove_ids))
+            logger.debug('RecordGroup {NAME}: successfully removed {ID} from the list of unsaved record IDs '
+                         'associated with the record group'.format(NAME=self.name, ID=remove_ids))
 
         return success
 
@@ -1503,12 +1503,12 @@ class RecordEntry:
         """
         if internal_only is True:
             instance = settings.instance_id
-            logger.debug('RecordEntry {NAME}: attempting to obtain an instance-specific list of unsaved record IDs '
-                         'associated with the record entry'.format(NAME=self.name))
+            logger.debug('RecordGroup {NAME}: attempting to obtain an instance-specific list of unsaved record IDs '
+                         'associated with the record group'.format(NAME=self.name))
         else:
             instance = None
-            logger.debug('RecordEntry {NAME}: attempting to obtain list of unsaved record IDs associated with the '
-                         'record entry'.format(NAME=self.name))
+            logger.debug('RecordGroup {NAME}: attempting to obtain list of unsaved record IDs associated with the '
+                         'record group'.format(NAME=self.name))
 
         value = {'instance': instance, 'id_code': self.id_code}
         content = {'action': 'request_ids', 'value': value}
@@ -1522,8 +1522,8 @@ class RecordEntry:
 
             return []
         else:
-            logger.debug('RecordEntry {NAME}: successfully obtained a list of unsaved record IDs associated with the '
-                         'record entry'.format(NAME=self.name))
+            logger.debug('RecordGroup {NAME}: successfully obtained a list of unsaved record IDs associated with the '
+                         'record group'.format(NAME=self.name))
 
         unsaved_ids = response['value']
 
@@ -1535,13 +1535,13 @@ class RecordEntry:
 
         Arguments:
             record_ids (list): list of record IDs to add to the set of unsaved record IDs with ID code corresponding to
-                the ID code of the record entry.
+                the ID code of the record group.
 
         Returns:
             success (bool): addition of records to the set of unsaved record IDs was successful.
         """
-        logger.debug('RecordEntry {NAME}: attempting to add record IDs {ID} to the list of unsaved record IDs '
-                     'associated with the record entry'.format(NAME=self.name, ID=record_ids))
+        logger.debug('RecordGroup {NAME}: attempting to add record IDs {ID} to the list of unsaved record IDs '
+                     'associated with the record group'.format(NAME=self.name, ID=record_ids))
 
         if isinstance(record_ids, str):
             id_set = [(record_ids, settings.instance_id)]
@@ -1559,8 +1559,8 @@ class RecordEntry:
                 .format(NAME=self.name, ID=record_ids, TYPE=self.name, ERR=response['value'])
             logger.error(msg)
         else:
-            logger.debug('RecordEntry {NAME}: successfully added record IDs {ID} to the list of unsaved record IDs '
-                         'associated with the record entry'.format(NAME=self.name, ID=record_ids))
+            logger.debug('RecordGroup {NAME}: successfully added record IDs {ID} to the list of unsaved record IDs '
+                         'associated with the record group'.format(NAME=self.name, ID=record_ids))
 
         return success
 
@@ -1570,7 +1570,7 @@ class DatabaseRecord:
     Generic database record account.
 
     Attributes:
-        name (str): name of the parent record entry.
+        name (str): name of the record's record group.
 
         id (int): record element number.
 
@@ -1590,7 +1590,7 @@ class DatabaseRecord:
     def __init__(self, name, entry, level: int = 0):
         """
         Arguments:
-            name (str): name of the parent record entry (record type).
+            name (str): name of the record's record group (record type).
 
             entry (class): configuration entry for the record layout.
 
@@ -1660,12 +1660,12 @@ class DatabaseRecord:
             record_elements = entry['RecordElements']
         except KeyError:
             msg = 'missing configuration parameter "RecordElements"'
-            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
         else:
             for element_name in record_elements:
                 if element_name in used_elements:
                     msg = 'more than one entry configured for record element {ELEM}'.format(ELEM=element_name)
-                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     continue
                 else:
@@ -1689,7 +1689,7 @@ class DatabaseRecord:
             tabs = entry['Tabs']
         except KeyError:
             msg = 'missing configuration parameter "Tabs"'
-            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             tabs = {}
 
@@ -1707,7 +1707,7 @@ class DatabaseRecord:
                 _tab_sections = _tab_entry['Sections']
             except KeyError:
                 msg = 'no sections defined for tab layout {TAB}'.format(TAB=tab_name)
-                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 continue
             else:
@@ -1715,7 +1715,7 @@ class DatabaseRecord:
                     if tab_section in used_sections:
                         msg = 'unable to add section {SEC} to tab layout {TAB} - section {SEC} is already defined ' \
                               'for a previous tab'.format(TAB=tab_name, SEC=tab_section)
-                        logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                         continue
 
@@ -1732,7 +1732,7 @@ class DatabaseRecord:
             sections = entry['Sections']
         except KeyError:
             msg = 'missing configuration parameter "Sections"'
-            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             sections = {}
 
@@ -1754,7 +1754,7 @@ class DatabaseRecord:
                 _section_layout = _section_entry['Layout']
             except KeyError:
                 msg = 'no record elements defined for section layout {SEC}'.format(SEC=section)
-                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 continue
             else:
@@ -1773,7 +1773,7 @@ class DatabaseRecord:
                         if element_name in used_section_elements:
                             msg = 'unable to add record element {ELEM} to section layout {SEC} - element {ELEM} is ' \
                                   'already defined in a previous section'.format(ELEM=element_name, SEC=section)
-                            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                             continue
 
@@ -1793,7 +1793,7 @@ class DatabaseRecord:
                         except KeyError:
                             msg = 'unable to add record element {ELEM} to section layout {SEC} - element {ELEM} is ' \
                                   'not defined in RecordElements'.format(ELEM=element_name, SEC=section)
-                            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                             continue
 
@@ -1807,7 +1807,7 @@ class DatabaseRecord:
                                 msg = 'unable to add record element {ELEM} to row {ROW} of section layout {SEC} - ' \
                                       'only 3 elements are allowed per row'\
                                     .format(ELEM=element_name, SEC=section, ROW=row_num)
-                                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                                logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                                 remaining_elements.append(element_name)
                             else:
@@ -1830,7 +1830,7 @@ class DatabaseRecord:
             element_name = record_element.name
             if element_name not in used_section_elements:
                 msg = 'no section provided for record element {ELEM}'.format(ELEM=element_name)
-                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 #try:
                 #    self.sections['_Default']['Elements'].append(element_name)
                 #except KeyError:
@@ -1839,7 +1839,7 @@ class DatabaseRecord:
         for section in self.sections:
             if section not in used_sections:
                 msg = 'no tab provided for section {SEC}'.format(SEC=section)
-                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 #try:
                 #    self.tabs['_Default']['Sections'].append(section)
                 #except KeyError:
@@ -1945,8 +1945,8 @@ class DatabaseRecord:
                 element fields, even those normally disabled.
 
             references (dict): optional dictionary of reference entry dataframes for association types configured for
-                the record entry. If provided, will not attempt to import references for the given association type
-                but will use the reference entries provided instead.
+                the parent record group. If provided, will not attempt to import references for the given association
+                type but will use the reference entries provided instead.
         """
         # pd.set_option('display.max_columns', None)
         record_elements = self.components
@@ -2680,7 +2680,7 @@ class DatabaseRecord:
         # Prepare to save the record values
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
-            logger.debug('RecordEntry {NAME}, Record {ID}: exporting record values'
+            logger.debug('RecordGroup {NAME}, Record {ID}: exporting record values'
                          .format(NAME=self.name, ID=record_id))
             record_data = self.export_values()
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)

@@ -1421,7 +1421,7 @@ class ReferenceCollection(DataCollection):
         return df
 
     def data(self, indices: list = None, on=None, edited: bool = None, added: bool = None, deleted: bool = False,
-             drop_na: bool = False, fields: list = None, reference: bool = False):
+             drop_na: bool = False, fields: list = None, reference: bool = False, include_state: bool = False):
         """
         Return the collection data.
 
@@ -1444,6 +1444,8 @@ class ReferenceCollection(DataCollection):
 
             reference (bool): reverse the record and the reference information [Default: False].
 
+            include_state (bool): include state fields in the output [Default: False].
+
         Returns:
             df (DataFrame): data matching the selection requirements.
         """
@@ -1458,7 +1460,7 @@ class ReferenceCollection(DataCollection):
         if not (isinstance(fields, list) or isinstance(fields, tuple)):
             fields = list(dtypes)
 
-        select_fields = [i for i in fields if i not in state_fields]
+        select_fields = [i for i in fields if i not in state_fields] if not include_state else fields
 
         if isinstance(indices, int):
             sub_inds = [indices]

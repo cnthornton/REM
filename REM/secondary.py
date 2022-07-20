@@ -1868,7 +1868,7 @@ def record_import_window(table, enable_new: bool = False):
 
                 continue
 
-            logger.info('RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
+            logger.info('RecordGroup {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
 
             record_data = pd.Series(index=list(table.columns))
             record_data['RecordID'] = record_id

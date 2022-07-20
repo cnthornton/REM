@@ -129,7 +129,7 @@ class AssociationEntry:
             is_primary = entity.primary
         except AttributeError:
             msg = '{TYPE} is not a participating entity in the association'.format(TYPE=record_type)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.exception('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise ImportError(msg)
 
@@ -279,7 +279,7 @@ class AssociationEntry:
             except KeyError:
                 msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"' \
                     .format(COL='RecordID')
-                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.error('RecordGroup {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 raise ImportError(msg)
         else:

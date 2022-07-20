@@ -4129,7 +4129,7 @@ class ReferenceList(DataList):
         if self._type_field and not ref_df.empty:
             record_type = ref_df[self._type_field].unique().squeeze()
             record_entry = settings.records.fetch_rule(record_type)
-            db_df = record_entry.import_references(ref_df, rule=self.association_rule, include_deleted=True)
+            db_df = record_entry.import_references(ref_df[id_col], rule=self.association_rule, include_deleted=True)
 
             # Subset on table columns
             db_df = db_df[[i for i in db_df.columns.values if i in import_df.columns]]
