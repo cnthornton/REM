@@ -524,7 +524,7 @@ class RecordEntry:
 
         return import_df
 
-    def import_references(self, records, rule: str = None, include_deleted: bool = False):
+    def import_references(self, records, rule: str = None, filter_rules: list = None, include_deleted: bool = False):
         """
         Import a record's association.
 
@@ -533,6 +533,9 @@ class RecordEntry:
 
             rule (str): name of the association rule to use to gather information about the references to extract
                 [Default: import associations for all rules].
+
+            filter_rules (tuple): tuple or list of tuples containing where clause and value tuple for a given filter
+                rule.
 
             include_deleted (bool): import reference entries that were set to deleted as well.
         """
@@ -558,6 +561,14 @@ class RecordEntry:
                 raise ImportError(msg)
         else:
             record_ids = records
+
+        # Add optional filters in tuple form
+        if isinstance(filter_rules, list):
+            filter_set = filter_rules
+        elif isinstance(filter_rules, tuple):
+            filter_set = [filter_rules]
+        else:
+            filter_set = []
 
         # Remove duplicate IDs
         record_ids = list(set(record_ids))
@@ -596,7 +607,7 @@ class RecordEntry:
                 sub_ids = record_ids[i: i + 1000]
                 sub_vals = ','.join(['?' for _ in sub_ids])
 
-                filters = [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
+                filters = [i for i in filter_set] + [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
                 if not include_deleted:
                     filters.append(('IsDeleted = ?', 0))
 
@@ -2012,6 +2023,9 @@ class DatabaseRecord:
                             elem_data = self.create_components(record_element, record_data=elem_data)
 
                         record_element.append(elem_data, new=True)
+                    else:
+                        logger.warning('RecordType {NAME}: record element {ELEM} can only accept input in the form '
+                                       'of a dataframe'.format(NAME=self.name, ELEM=element_name))
 
                 # Attempt to find existing components in the database
 
@@ -2697,9 +2711,11 @@ class DatabaseRecord:
                 ref_data = refbox.data(edited_rows=True)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
-            #logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
-            #             .format(ID=record_id, ASSOC=association_type))
-            #deleted_df = refbox.data(deleted_rows=True)
+            logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
+                         .format(ID=record_id, ASSOC=association_rule))
+            deleted_df = refbox.data(deleted_rows=True, added_rows=False)  # deleted but not added
+            if not deleted_df.empty:
+                statements = record_entry.delete_database_records(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
         try:
