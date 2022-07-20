@@ -62,7 +62,7 @@ class AuditRule:
                          ('Cancel', 'Start', 'Save', 'TG', 'TransactionPanel', 'Panels', 'Title', 'Frame', 'Header',
                           'Database')}
 
-        self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Save', 'TG')}
+        self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Save', 'TG', 'Database')}
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -591,7 +591,7 @@ class AuditRule:
         header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
                                  sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
                                           pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
-                                          background_color=bg_col, disabled=False, tooltip='Record database'),
+                                          background_color=bg_col, enable_events=True, tooltip='Record database'),
                                  sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
                                            image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
                                            metadata={'disabled': False}, tooltip='Parameter selection')
