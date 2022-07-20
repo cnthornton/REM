@@ -43,6 +43,8 @@ class AuditRule:
         transactions (list): list of audit transactions.
 
         record_data (dict): audit record data.
+        
+        exists (bool): audit record already exists for the provided parameters [Default: False].
     """
 
     def __init__(self, name, entry):
@@ -160,6 +162,7 @@ class AuditRule:
 
         self.panel_keys = {0: self.key_lookup('TransactionPanel')}
         self.current_panel = 0
+        self.exists = False
 
     def key_lookup(self, component, rev: bool = False):
         """
@@ -258,9 +261,16 @@ class AuditRule:
         start_key = self.key_lookup('Start')
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
+        db_key = self.key_lookup('Database')
 
         if event == tg_key:
             self.set_tab_focus(window)
+
+            return current_rule
+
+        if event == db_key:
+            database = values[db_key]
+            settings.edit_attribute('dbname', database)
 
             return current_rule
 
@@ -358,26 +368,34 @@ class AuditRule:
 
                 # Verify that the audit has not already been performed with these parameters
                 audit_exists = self.load_record(params)
-                if audit_exists is True and not user.check_permission(self.permissions['edit']):
-                    #msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
-                    #      'audit records through the records menu'
-                    msg = 'User does not have permissions to edit an existing audit.'
-                    logger.warning('AuditRule {NAME}: audit initialization failed - {MSG}'
-                                   .format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_error(msg)
-                    current_rule = self.reset_rule(window, current=True)
+                if audit_exists is True:
+                    if user.check_permission(self.permissions['edit']) is False:
+                        msg = 'Additional permissions are required to edit an existing audit.'
+                        logger.warning('AuditRule {NAME}: audit initialization failed - {MSG}'
+                                       .format(NAME=self.name, MSG=msg))
+                        mod_win2.popup_error(msg)
+                        current_rule = self.reset_rule(window, current=True)
 
-                    return current_rule
+                        return current_rule
+                    else:
+                        msg = 'An audit has already been performed using these parameters. Would you like to edit ' \
+                              'the existing audit?'
+                        user_input = mod_win2.popup_confirm(msg)
+                        if not user_input == 'OK':
+                            current_rule = self.reset_rule(window, current=True)
 
-                # Initialize audit
-                for transaction_tab in self.transactions:
+                            return current_rule
+
+                # Load the transaction records
+                record_id = self.record_data['RecordID']
+                transactions = self.transactions
+                for transaction_tab in transactions:
                     tab_key = transaction_tab.key_lookup('Tab')
                     tab_keys.append(tab_key)
 
-                    # Import tab data from the database
-                    database = values[self.key_lookup('Database')]
+                    # Import transaction data from the database
                     try:
-                        transaction_tab.load_data(params, database=database)
+                        transaction_tab.load_data(params, audit_id=record_id)
                     except ImportError as e:
                         msg = 'failed to initialize the audit transactions'
                         logger.error('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -386,12 +404,6 @@ class AuditRule:
 
                         return current_rule
 
-                param_str = ', '.join(['{}={}'.format(i.name, i.value) for i in params])
-                logger.info('AuditRule {NAME}: transaction audit in progress with parameters {PARAMS}'
-                            .format(NAME=self.name, PARAMS=param_str))
-                self.in_progress = True
-
-                for transaction_tab in self.transactions:
                     # Enable table element events
                     transaction_tab.table.enable(window)
 
@@ -400,6 +412,21 @@ class AuditRule:
 
                     # Update tab ID components
                     transaction_tab.update_id_components()
+
+                param_str = ', '.join(['{}={}'.format(i.name, i.value) for i in params])
+                logger.info('AuditRule {NAME}: transaction audit in progress with parameters {PARAMS}'
+                            .format(NAME=self.name, PARAMS=param_str))
+                self.in_progress = True
+
+                #for transaction_tab in transactions:
+                    # Enable table element events
+                #    transaction_tab.table.enable(window)
+
+                    # Update the tab table display
+                #    transaction_tab.table.update_display(window)
+
+                    # Update tab ID components
+                #    transaction_tab.update_id_components()
 
                 self.set_tab_focus(window)
 
@@ -424,7 +451,10 @@ class AuditRule:
             refs = {}
             for transaction_tab in self.transactions:
                 assoc_type = transaction_tab.association_type
-                ref_df = transaction_tab.table.references.data(reference=True)
+                ref_df = transaction_tab.table.references.data(reference=True, include_state=True)
+                ref_df = ref_df.append(transaction_tab.table.references.data(deleted=True, added=False, reference=True,
+                                                                             include_state=True),
+                                       ignore_index=True)
                 if assoc_type in refs:
                     refs[assoc_type] = refs[assoc_type].append(ref_df, ignore_index=True)
                 else:
@@ -760,6 +790,8 @@ class AuditRule:
                 self.record_data[settings.creation_date] = datetime.datetime.now()
 
                 self.parameters = params
+
+        self.exists = exists
 
         return exists
 
@@ -1151,7 +1183,6 @@ class AuditTransaction:
             raise AttributeError(msg)
 
         self.parameters = None
-        self.database = None
         self.id_components = []
 
     def key_lookup(self, component, rev: bool = False):
@@ -1341,7 +1372,7 @@ class AuditTransaction:
 
         return list(failed_rows)
 
-    def load_data(self, parameters, database: str = None):
+    def load_data(self, parameters, audit_id: str = None):
         """
         Load data from the database.
         """
@@ -1352,12 +1383,26 @@ class AuditTransaction:
         logger.info('AuditTransaction {NAME}: attempting to load transaction records from the database based on '
                     'the supplied parameters'.format(NAME=self.name))
         try:
-            df = record_entry.import_records(filter_params=parameters, database=database)
+            df = record_entry.import_records(filter_params=parameters)
         except Exception as e:
             msg = 'failed to load the transaction records from the database'
             logger.exception('AuditTransaction {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             raise ImportError(msg)
+
+        # Load additional records associated with the audit that may not have been captured by the selection parameters
+        ref_df = record_entry.import_references(audit_id, is_reference=True)
+        if not ref_df.empty:
+            records = ref_df.loc[ref_df['RecordType'] == self.record_type, 'RecordID'].tolist()
+
+            imported_ids = df[self.table.id_column].tolist()
+            remaining_records = list(set(records).difference(imported_ids))
+            print('loading additional records associated with the audit: {}'.format(remaining_records))
+
+            if len(remaining_records) > 0:
+                loaded_df = record_entry.load_records(remaining_records)
+
+                df = df.append(loaded_df)
 
         logger.info('AuditTransaction {NAME}: successfully loaded the transaction records from the database'
                     .format(NAME=self.name))
@@ -1368,8 +1413,6 @@ class AuditTransaction:
 
         # Update parameter attributes
         self.parameters = parameters
-        if database:
-            self.database = database
 
     def audit_transactions(self):
         """
@@ -1380,7 +1423,6 @@ class AuditTransaction:
         # Class attributes
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
-        database = self.database
 
         table = self.table
         collection = table.collection
@@ -1417,7 +1459,7 @@ class AuditTransaction:
             logger.debug('AuditTransaction {NAME}: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
 
             # Find the date of the most recent transaction prior to current date
-            unq_dates = record_entry.unique_values(date_col, sort=False, database=database)
+            unq_dates = record_entry.unique_values(date_col, sort=False)
             unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
             unq_dates_iso.sort()
 
@@ -1442,7 +1484,7 @@ class AuditTransaction:
                             'transaction date {DATE}'.format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 import_filters = ('{} = ?'.format(date_db_col), prev_date.strftime(settings.date_format))
-                last_df = record_entry.import_records(filter_rules=import_filters, database=database)
+                last_df = record_entry.import_records(filter_rules=import_filters)
                 last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
                 last_id = None
@@ -1547,7 +1589,7 @@ class AuditTransaction:
             last_id_of_df = id_list[-1]  # last transaction of the dataframe
 
             import_filters = ('{} = ?'.format(date_db_col), audit_date.strftime(settings.date_format))
-            current_df = record_entry.import_records(filter_rules=import_filters, database=database)
+            current_df = record_entry.import_records(filter_rules=import_filters)
 
             current_ids = sorted(current_df[pkey].tolist(), reverse=True)
             for current_id in current_ids:
@@ -1573,7 +1615,7 @@ class AuditTransaction:
 
         # Query database for the potentially missing transactions
         if missing_transactions:
-            loaded_df = record_entry.load_records(missing_transactions, import_filters=False, database=database)
+            loaded_df = record_entry.load_records(missing_transactions, use_import_rules=False)
             missing_df = missing_df.append(loaded_df, ignore_index=True)
 
         # Display import window with potentially missing data

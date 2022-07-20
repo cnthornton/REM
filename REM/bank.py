@@ -210,6 +210,13 @@ class BankRule:
             assoc_acct = None
             assoc_keys = []
 
+        db_key = self.key_lookup('Database')
+        if event == db_key:
+            database = values[db_key]
+            settings.edit_attribute('dbname', database)
+
+            return current_rule
+
         # Run an account entry event
         if event in acct_keys:
             acct = self.fetch_account(self.current_account)
@@ -458,8 +465,6 @@ class BankRule:
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
-                database = values[self.key_lookup('Database')]
-
                 # Load the main transaction account data using the defined parameters
                 acct_params = params[acct_titles[current_acct]]
                 if not acct_params:
@@ -470,7 +475,7 @@ class BankRule:
                     return self.reset_rule(window, current=True)
 
                 try:
-                    acct.load_data(acct_params, database=database)
+                    acct.load_data(acct_params)
                 except Exception as e:
                     msg = 'failed to load data for current account {ACCT} - {ERR}'.format(ACCT=current_acct, ERR=e)
                     logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -515,7 +520,7 @@ class BankRule:
                     reference_records = refs.loc[refs['ReferenceType'] == assoc_type, 'ReferenceID'].tolist()
 
                     try:
-                        assoc_acct.load_data(acct_params, records=reference_records, database=database)
+                        assoc_acct.load_data(acct_params, records=reference_records)
                     except Exception as e:
                         msg = 'failed to load data for association {ACCT} - {MSG}'.format(ACCT=acct_name, MSG=e)
                         logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -2074,7 +2079,7 @@ class BankAccount:
         # Update the display table
         table.update_display(window)
 
-    def load_data(self, params, records: list = None, database: str = None):
+    def load_data(self, params, records: list = None):
         """
         Load record and reference data from the database.
         """
@@ -2084,7 +2089,7 @@ class BankAccount:
         id_column = table.id_column
 
         # Update the record table dataframe with the data imported from the database
-        df = self.load_records(params, records=records, database=database)
+        df = self.load_records(params, records=records)
 
         # Load the record references from the reference table connected with the association rule
         record_ids = df[id_column].tolist()
@@ -2131,7 +2136,7 @@ class BankAccount:
 
         return df.copy()
 
-    def load_records(self, parameters, records: list = None, database: str = None):
+    def load_records(self, parameters, records: list = None):
         """
         Load record and reference data from the database based on the supplied parameter set.
 
@@ -2139,8 +2144,6 @@ class BankAccount:
             parameters (list): list of data parameters to filter the records database table on.
 
             records (list): also load records in the list of record IDs.
-
-            database (str): load records from the provided database.
 
         Returns:
             success (bool): records and references were loaded successfully.
@@ -2152,7 +2155,7 @@ class BankAccount:
         import_rules = self.import_rules
 
         try:
-            df = record_entry.import_records(filter_params=parameters, import_rules=import_rules, database=database)
+            df = record_entry.import_records(filter_params=parameters, import_rules=import_rules)
         except Exception as e:
             msg = 'failed to import data from the database'
             logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
