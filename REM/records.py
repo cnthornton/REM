@@ -409,7 +409,7 @@ class RecordEntry:
 
         return unique_values
 
-    def load_records(self, id_list, import_filters: bool = True, filters: dict = None, import_rules: dict = None,
+    def load_records(self, id_list, use_import_rules: bool = True, filters: dict = None, import_rules: dict = None,
                      database: str = None):
         """
         Load database records from a list of provided record IDs.
@@ -417,7 +417,7 @@ class RecordEntry:
         Arguments:
             id_list (list): load records with these record IDs from the database.
 
-            import_filters (bool): use import rule filters when loading the records [Default: True].
+            use_import_rules (bool): use import rule filters when loading the records [Default: True].
 
             filters (dict): use additional selection import filters.
 
@@ -451,7 +451,7 @@ class RecordEntry:
         import_df = pd.DataFrame()
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
-            if import_filters:
+            if use_import_rules:
                 filter_rules = custom_filters + mod_db.format_import_filters(import_rules)
             else:
                 filter_rules = custom_filters
@@ -524,43 +524,40 @@ class RecordEntry:
 
         return import_df
 
-    def import_references(self, records, rule: str = None, filter_rules: list = None, include_deleted: bool = False):
+    def import_references(self, ids, rule: str = None, filter_rules: list = None, is_reference: bool = False,
+                          include_deleted: bool = False):
         """
-        Import a record's association.
+        Import reference entries for the records associations.
 
         Arguments:
-            records (list): list of record IDs to extract from the reference table.
+            ids (list): list of IDs to extract from the reference table. Default is to assume the list is a list of
+                record IDs unless the is_reference argument is set to True.
 
             rule (str): name of the association rule to use to gather information about the references to extract
                 [Default: import associations for all rules].
 
-            filter_rules (tuple): tuple or list of tuples containing where clause and value tuple for a given filter
-                rule.
+            filter_rules (list): list of tuples containing where clause and value tuple for a given filter rule.
+
+            is_reference (bool): the provided list of IDs is a list of reference IDs.
 
             include_deleted (bool): import reference entries that were set to deleted as well.
         """
         association_rules = self.association_rules
 
         if rule and rule in association_rules:
-            import_rules = [rule]
+            selected_types = [rule]
         else:
-            import_rules = list(association_rules)
+            selected_types = list(association_rules)
 
-        if isinstance(records, str):
-            record_ids = [records]
-        elif isinstance(records, pd.Series):
-            record_ids = records.tolist()
-        elif isinstance(records, pd.DataFrame):
-            try:
-                record_ids = records['RecordID'].tolist()
-            except KeyError:
-                msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"' \
-                    .format(COL='RecordID')
-                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise ImportError(msg)
+        # Remove duplicate IDs from the provided list of record IDs, if any
+        if isinstance(ids, list):
+            id_list = list(set(ids))
+        elif isinstance(ids, str):
+            id_list = [ids]
+        elif isinstance(ids, pd.Series):
+            id_list = ids.unique().tolist()
         else:
-            record_ids = records
+            id_list = []
 
         # Add optional filters in tuple form
         if isinstance(filter_rules, list):
@@ -570,41 +567,39 @@ class RecordEntry:
         else:
             filter_set = []
 
-        # Remove duplicate IDs
-        record_ids = list(set(record_ids))
-
         # Prepare the import data
-        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
-                                   'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
-                                   'IsDeleted'])
-        for rule_name in import_rules:
+        references = {}
+        for association_name in selected_types:
             try:
-                rule = association_rules[rule_name]
+                assoc_entry = association_rules[association_name]
             except KeyError:
                 msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
-                    .format(RULE=rule_name)
+                    .format(RULE=association_name)
                 logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 raise ImportError(msg)
 
-            is_primary = rule['Primary']
-            reference_table = rule['ReferenceTable']
+            is_primary = assoc_entry['Primary']
+            reference_table = assoc_entry['ReferenceTable']
 
             if is_primary:  # input records are the primary record IDs
                 columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate',
                            'DocType AS RecordType',
                            'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
                            'IsChild', 'IsHardLink', 'IsApproved']
-                filter_str = 'DocNo IN ({VALS})'
+                filter_str = 'DocNo IN ({VALS})' if is_reference is False else 'RefNo IN ({VALS})'
             else:  # input records are the reference record ID
                 columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
                            'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
                            'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
-                filter_str = 'RefNo IN ({VALS})'
+                filter_str = 'RefNo IN ({VALS})' if is_reference is False else 'DocNo IN ({VALS})'
 
             # Import reference entries related to record_id
-            for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
-                sub_ids = record_ids[i: i + 1000]
+            df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
+                                       'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
+                                       'IsDeleted'])
+            for i in range(0, len(id_list), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+                sub_ids = id_list[i: i + 1000]
                 sub_vals = ','.join(['?' for _ in sub_ids])
 
                 filters = [i for i in filter_set] + [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
@@ -615,12 +610,17 @@ class RecordEntry:
                                                                    filter_rules=filters), prog_db=True)
                 df = df.append(import_df, ignore_index=True)
 
-        # Set column data types
-        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df.fillna({i: False for i in bool_columns}, inplace=True)
-        df = df.astype({i: np.bool_ for i in bool_columns})
+            # Set column data types
+            bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+            df.fillna({i: False for i in bool_columns}, inplace=True)
+            df = df.astype({i: np.bool_ for i in bool_columns})
 
-        return df
+            references[association_name] = df
+
+        if len(selected_types) == 1:
+            return references[selected_types[0]]
+        else:
+            return references
 
     def load_unreferenced_records(self, rule_name, database: str = None):
         """
