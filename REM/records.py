@@ -2715,7 +2715,7 @@ class DatabaseRecord:
                          .format(ID=record_id, ASSOC=association_rule))
             deleted_df = refbox.data(deleted_rows=True, added_rows=False)  # deleted but not added
             if not deleted_df.empty:
-                statements = record_entry.delete_database_records(deleted_df, association_rule, statements=statements)
+                statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
         try:
@@ -2815,8 +2815,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        #success = True
+        #success = user.write_db(sstrings, psets)
+        success = True
         print('final save statements:')
         print(statements)
 

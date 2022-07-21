@@ -1025,7 +1025,8 @@ class DataTable(RecordElement):
                 # Get the real indices of the selected rows
                 indices = self.get_index(select_row_indices)
                 if len(indices) > 0:
-                    collection.delete(indices)
+                    self.delete_rows(indices)
+                    #collection.delete(indices)
                     update_event = True
 
             # Import rows button clicked
@@ -2807,7 +2808,9 @@ class ReferenceTable(RecordTable):
         df = records_data.delete(indices, inplace=inplace)
 
         deleted_ids = records_data.row_ids(indices=indices)
+        print('{}: removing records {} from the table'.format(self.name, deleted_ids))
         deleted_ref_inds = ref_data.get_index(deleted_ids)
+        print('{}: also deleting references associated with the records at indices {} in the reference table'.format(self.name, deleted_ref_inds))
         ref_data.delete(deleted_ref_inds, inplace=True)
 
         return df
@@ -3545,6 +3548,7 @@ class DataList(RecordElement):
         """
         Create a layout for an entry in the data list.
         """
+        collection = self.collection
         modifiers = self.modifiers
         level = self.level
         editable = self.editable
@@ -3552,8 +3556,8 @@ class DataList(RecordElement):
         flag_cols = self.flags
         entries = window[self.key_lookup('Element')]
 
-        row = self.collection.data(indices=index).squeeze()
-        display_row = self.collection.format_display(indices=index).squeeze()
+        row = collection.data(indices=index).squeeze()
+        display_row = collection.format_display(indices=index).squeeze()
 
         entry_elements = {i: '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=i, INDEX=index) for
                           i in ('Entry', 'Annotation', 'Header', 'Delete', 'Edit', 'Notes', 'Warnings')}
@@ -3698,10 +3702,11 @@ class DataList(RecordElement):
                          vertical_alignment='c')
 
         # Create the entry frame
+        entry_vis = not collection.get_state('deleted', indices=[index])
         entry_key = entry_elements['Entry']
         layout = [[sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
-                                   pad=(pad_el, pad_el), background_color=bg_color, relief='raised',
-                                   metadata={'visible': True}))]]
+                                   pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
+                                   metadata={'visible': entry_vis}))]]
 
         # Add the entry frame to the entries column
         window.extend_layout(entries, layout)
@@ -3771,6 +3776,8 @@ class DataList(RecordElement):
         entry_indices = self.indices
 
         df = collection.data(current=False)
+        print('updating the reference display')
+        print(df)
         annotations = self.annotate_display(df)
 
         # Create or update index entries
@@ -3779,6 +3786,7 @@ class DataList(RecordElement):
             if index in entry_indices:
                 entry_key = self.key_lookup('Entry:{}'.format(index))
                 entry_deleted = collection.get_state('deleted', indices=[index])
+                print('entry at index {} is set to deleted: {}'.format(index, entry_deleted))
 
                 if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
 
