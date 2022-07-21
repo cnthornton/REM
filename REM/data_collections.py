@@ -655,6 +655,10 @@ class DataCollection:
         df = self.df.copy()
         add_df = add_df.copy()
 
+        state_fields = {self._added_column: new,
+                        self._edited_column: False,
+                        self._deleted_column: False}
+
         if add_df.empty:  # no data to add
             return df
 
@@ -664,8 +668,13 @@ class DataCollection:
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
 
-        # Add the "state" columns to the new data
-        add_df.loc[:, [self._added_column, self._edited_column, self._deleted_column]] = [new, False, False]
+        # Add the "state" columns to the new data, if not set
+        for state_field in state_fields:
+            if state_field not in add_df.columns:
+                print('adding default for state field {}'.format(state_field))
+                add_df.loc[:, state_field] = state_fields[state_field]  # default for the state
+            else:
+                print('using existing state values for state field {}'.format(state_field))
 
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
@@ -673,6 +682,9 @@ class DataCollection:
         # Drop columns that are not in the header
         extra_cols = [i for i in add_df.columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
+
+        print('initial add dataframe for appending')
+        print(add_df)
 
         # Add new data to the table
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
@@ -1213,6 +1225,90 @@ class RecordCollection(DataCollection):
         except KeyError:
             self.date_column = 'RecordDate'
 
+    def append(self, add_df, inplace: bool = True, new: bool = False, reindex: bool = True):
+        """
+        Add data to the collection.
+
+        Arguments:
+            add_df: new data entries to append to the collection.
+
+            inplace (bool): append to the dataframe in-place [Default: True].
+
+            new (bool): set the added state of the new data to True [Default: False].
+
+            reindex (bool): reset collection entry indices after append.
+        """
+        df = self.df.copy()
+        add_df = add_df.copy()
+        id_col = self.id_column
+
+        state_fields = {self._added_column: new,
+                        self._edited_column: False,
+                        self._deleted_column: False}
+
+        if add_df.empty:  # no data to add
+            return df
+
+        # Convert add_df to dataframe
+        if isinstance(add_df, pd.Series):
+            add_df = add_df.to_frame().T
+        elif isinstance(add_df, dict):
+            add_df = pd.DataFrame(add_df)
+
+        # Enforce conformity of the new data
+        add_df = self.enforce_conformity(add_df)
+
+        # Drop columns that are not in the header
+        extra_cols = [i for i in add_df.columns if i not in df.columns]
+        add_df.drop(extra_cols, axis=1, inplace=True)
+        print('initial add dataframe for appending')
+        print(add_df)
+
+        # Find shared entries between the collection and the new data to add
+        if not df.empty:
+            df.set_index(id_col, inplace=True)
+            add_df.set_index(id_col, inplace=True)
+
+            common_inds = add_df.index.intersection(df.index).tolist()
+
+            if len(common_inds) > 0:
+                mod_df = add_df.loc[common_inds]
+                mod_df.loc[:, [self._edited_column, self._deleted_column]] = [True, False]
+                logger.debug('DataCollection {NAME}: modifying {NROW} entries in the collection'
+                             .format(NAME=self.name, NROW=mod_df.shape[0]))
+
+                real_inds = self.record_index(mod_df.index.tolist())
+                mod_df = mod_df.reset_index().set_index(pd.Index(real_inds))
+                df.reset_index(inplace=True)
+
+                df.loc[mod_df.index, mod_df.columns] = mod_df
+                #df = self._set_dtypes(df)  # the replace method does not preserve dtypes
+            else:
+                df.reset_index(inplace=True)
+
+            # Find new entries to be appended to the collection
+            new_df = add_df.loc[~add_df.index.isin(common_inds)]
+            new_df.reset_index(inplace=True)
+
+        else:  # collection is empty, so all data must be new
+            new_df = add_df
+
+        # Add the "state" columns to the new data, if not set
+        for state_field in state_fields:
+            if state_field not in new_df.columns:
+                new_df.loc[:, state_field] = state_fields[state_field]  # default for the state
+
+        logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
+                     .format(NAME=self.name, NROW=new_df.shape[0]))
+
+        # Add new data to the collection
+        df = df.append(new_df, ignore_index=reindex)
+
+        if inplace:
+            self.df = df
+
+        return df
+
     def as_reference(self, edited_only: bool = False):
         """
         Export data as a reference.
@@ -1361,6 +1457,10 @@ class ReferenceCollection(DataCollection):
         df = self.df.copy()
         add_df = add_df.copy()
 
+        state_fields = {self._added_column: new,
+                        self._edited_column: False,
+                        self._deleted_column: False}
+
         if add_df.empty:  # no data to add
             return df
 
@@ -1376,6 +1476,8 @@ class ReferenceCollection(DataCollection):
         # Drop columns that are not in the header
         extra_cols = [i for i in add_df.columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
+        print('initial add dataframe for appending')
+        print(add_df)
 
         # Find shared entries between the collection and the new data to add
         if not df.empty:
@@ -1395,7 +1497,7 @@ class ReferenceCollection(DataCollection):
                 df.reset_index(inplace=True)
 
                 df.loc[mod_df.index, mod_df.columns] = mod_df
-                df = self._set_dtypes(df)  # the replace method does not preserve dtypes
+                #df = self._set_dtypes(df)  # the replace method does not preserve dtypes
             else:
                 df.reset_index(inplace=True)
 
@@ -1406,8 +1508,10 @@ class ReferenceCollection(DataCollection):
         else:  # collection is empty, so all data must be new
             new_df = add_df
 
-        # Add "state" columns to the new data
-        new_df.loc[:, [self._added_column, self._edited_column, self._deleted_column]] = [new, False, False]
+        # Add the "state" columns to the new data, if not set
+        for state_field in state_fields:
+            if state_field not in new_df.columns:
+                new_df.loc[:, state_field] = state_fields[state_field]  # default for the state
 
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=new_df.shape[0]))
