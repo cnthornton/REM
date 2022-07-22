@@ -966,7 +966,6 @@ class AuditRule:
 
         # Map transaction data to transaction records
         record_mapping = self.record_mapping
-        results = {}
         for destination in record_mapping:
             dest_entry = record_mapping[destination]
 

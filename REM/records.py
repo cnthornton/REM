@@ -2015,14 +2015,15 @@ class DatabaseRecord:
                 logger.debug('RecordType {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
                              .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
 
-                # Attempt to find new components provided in the record data
+                # Attempt to add new components provided in the record data
                 if element_name in record_data:  # new components provided
-                    elem_data = record_data[element_name]
-                    if isinstance(elem_data, pd.DataFrame):
-                        if record_element.id_column not in elem_data.columns:  # IDs not yet created for the components
-                            elem_data = self.create_components(record_element, record_data=elem_data)
+                    new_data = record_data[element_name]
+                    if isinstance(new_data, pd.DataFrame) and not new_data.empty:
+                        if record_element.id_column not in new_data.columns:  # IDs not yet created for the components
+                            # Create IDs and default values for the new data
+                            new_data = self.create_components(record_element, record_data=new_data)
 
-                        record_element.append(elem_data, new=True)
+                        record_element.append(new_data, new=True)
                     else:
                         logger.warning('RecordType {NAME}: record element {ELEM} can only accept input in the form '
                                        'of a dataframe'.format(NAME=self.name, ELEM=element_name))
@@ -2031,8 +2032,8 @@ class DatabaseRecord:
 
                 # Load the reference entries defined by the given association rule
                 if assoc_rule in references:  # use provided reference entries instead of importing from database
-                    assoc_refs = references[assoc_rule]
-                    ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
+                    assoc_df = references[assoc_rule]
+                    ref_data = assoc_df[(assoc_df['RecordID'] == record_id) & (~assoc_df['IsDeleted'])]
                 else:
                     ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
@@ -2815,8 +2816,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print('final save statements:')
         print(statements)
 

@@ -1349,13 +1349,10 @@ class AccountManager:
             return False
 
         roles = set(self.roles)
-        print('user {} belongs to user roles {}'.format(self.uid, roles))
         inter = set(access_group).intersection(roles)
         if len(inter) > 0:
-            print('permission granted for access group {}'.format(access_group))
             return True
         else:
-            print('permission not granted for access group {}'.format(access_group))
             return False
 
     def database_tables(self, database, timeout: int = 5):

@@ -2,7 +2,6 @@
 REM data container classes.
 """
 
-import datetime
 import pandas as pd
 
 import REM.data_manipulation as mod_dm
@@ -125,14 +124,10 @@ class DataVector:
             if pd.isna(value):
                 return ''
 
-            #dec_sep = settings.decimal_sep
-            #group_sep = settings.thousands_sep
-
             value = str(value)
             if not editing:
                 display_value = settings.format_display_money(value)
             else:
-                #display_value = value.replace(group_sep, '').replace(dec_sep, '.')
                 display_value = value
 
         elif dtype in settings.supported_float_dtypes:
@@ -205,6 +200,8 @@ class DataCollection:
         self._state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column,
                               'added': self._added_column}
 
+        self._default_attrs = {'unique': False, 'required': False, 'hidden': False, 'editable': False, 'default': None}
+
         self.name = name
 
         self.dtypes = {self._deleted_column: 'bool', self._edited_column: 'bool', self._added_column: 'bool'}
@@ -224,6 +221,16 @@ class DataCollection:
                     self.dtypes[field] = 'varchar'
                 else:
                     self.dtypes[field] = dtype
+
+        try:
+            column_attrs = entry['ColumnAttributes']
+        except KeyError:
+            self.column_attrs = {}
+        else:
+            if isinstance(column_attrs, dict):
+                self.column_attrs = column_attrs
+            else:
+                self.column_attrs = {}
 
         try:
             dependant_fields = entry['DependantColumns']
@@ -280,6 +287,27 @@ class DataCollection:
             self.default[field] = default[field]
 
         self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
+
+    def _get_attr(self, field, attr: str = None):
+        """
+        Get an attribute for a collection field.
+        """
+        defaults = self._default_attrs
+        attrs = self.column_attrs
+
+        if field in self.dtypes:
+            if not attr:  # get all attributes for a column when none specified
+                field_attr = [attrs.get(field, {}).get(i, defaults.get(i, None)) for i in defaults]
+            elif isinstance(attr, list):
+                field_attr = [attrs.get(field, {}).get(i, defaults.get(i, None)) for i in attr]
+            elif isinstance(attr, str):
+                field_attr = attrs.get(field, {}).get(attr, defaults.get(attr, None))
+            else:
+                field_attr = None
+        else:  # the provided field is not a collection field
+            field_attr = None
+
+        return field_attr
 
     def _deleted_rows(self):
         """
@@ -683,8 +711,14 @@ class DataCollection:
         extra_cols = [i for i in add_df.columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
 
-        print('initial add dataframe for appending')
-        print(add_df)
+        # Check for violations of uniqueness among column values
+        unq_cols = [i for i in add_df.columns if self._get_attr(i, 'unique') is True]
+        for unq_col in unq_cols:
+            add_vals = add_df[unq_col]
+            dup_inds = add_vals[add_vals.isin(df[unq_col])].index
+            print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
+
+            add_df.drop(dup_inds, axis=0, inplace=True)
 
         # Add new data to the table
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
@@ -1301,6 +1335,15 @@ class RecordCollection(DataCollection):
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=new_df.shape[0]))
 
+        # Check for violations of uniqueness among column values
+        unq_cols = [i for i in new_df.columns if self._get_attr(i, 'unique') is True]
+        for unq_col in unq_cols:
+            new_vals = new_df[unq_col]
+            dup_inds = new_vals[new_vals.isin(df[unq_col])].index
+            print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
+
+            new_df.drop(dup_inds, axis=0, inplace=True)
+
         # Add new data to the collection
         df = df.append(new_df, ignore_index=reindex)
 
@@ -1515,6 +1558,15 @@ class ReferenceCollection(DataCollection):
 
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=new_df.shape[0]))
+
+        # Check for violations of uniqueness among column values
+        unq_cols = [i for i in new_df.columns if self._get_attr(i, 'unique') is True]
+        for unq_col in unq_cols:
+            new_vals = new_df[unq_col]
+            dup_inds = new_vals[new_vals.isin(df[unq_col])].index
+            print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
+
+            new_df.drop(dup_inds, axis=0, inplace=True)
 
         # Add new data to the collection
         df = df.append(new_df, ignore_index=reindex)
