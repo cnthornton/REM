@@ -1778,13 +1778,6 @@ class DataTable(RecordElement):
                                            background_color=disabled_bg_col, justification='r')]],
                              pad=(pad_el, 0), title_color=border_col, element_justification='r')
         actions_bar.append(row_count)
-        #actions_bar.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
-        #                                    background_color=header_col),
-        #                            sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
-        #                                    font=font, background_color=row_col, justification='r', relief='sunken',
-        #                                    metadata={'name': self.name})]],
-        #                          pad=(pad_el, 0), justification='r', element_justification='r', vertical_alignment='b',
-        #                          background_color=header_col, expand_x=True, expand_y=False))
 
         row6 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col,
                        vertical_alignment='c', expand_x=True, expand_y=True)]
@@ -3496,6 +3489,7 @@ class DataList(RecordElement):
         size = self._dimensions if not size else size
         self._dimensions = size
 
+        collection = self.collection
         self.level = level
         self.editable = True if editable or overwrite else False
         actions = self.actions
@@ -3540,11 +3534,33 @@ class DataList(RecordElement):
         options_bttn = sg.ButtonMenu('', menu, key=options_key, image_data=mod_const.OPTIONS_ICON, visible=options_vis,
                                      font=menu_font, button_color=(text_color, header_color), border_width=0)
 
-        # List entry count
+        # Entry list container layout
+        df = collection.data(current=False)
+        annotations = self.annotate_display(df)
+
+        n_entry = 0
+        container_layout = []
+        for index in df.index.tolist():
+            entry_deleted = collection.get_state('deleted', indices=[index])
+
+            # Add the entry layout to the entries container
+            try:
+                annotation_code = annotations[index]
+            except KeyError:
+                annotation_code = None
+
+            entry_layout = self.entry_layout(index, annotation_code=annotation_code)
+            container_layout.append(entry_layout)
+
+            # Add the entry to the count if visible
+            if not entry_deleted:
+                n_entry += 1
+
+        # List entry count element
         nrow_key = self.key_lookup('RowCount')
         row_count = sg.Frame('', [[sg.Image(data=mod_const.SUMM_ICON, background_color=border_color, expand_y=True,
                                             tooltip=self.description),
-                                   sg.Text('0', key=nrow_key, size=(8, 1), font=font, background_color=field_color,
+                                   sg.Text(nrow_key, key=nrow_key, size=(8, 1), font=font, background_color=field_color,
                                            justification='r', tooltip='Number of entries')]],
                              pad=((0, pad_el), 0), title_color=border_color)
 
@@ -3556,23 +3572,23 @@ class DataList(RecordElement):
         frame_key = self.key_lookup('Frame')
         layout = sg.Frame('', [[header_left, header_right],
                                [sg.Col([[sg.HorizontalSeparator()]], background_color=header_color, expand_x=True)],
-                               [sg.Col([[]], key=elem_key, background_color=bg_color, expand_x=True, expand_y=True,
-                                       scrollable=True, vertical_scroll_only=True, visible=True)]],
+                               [sg.Col(container_layout, key=elem_key, background_color=bg_color, expand_x=True,
+                                       expand_y=True, scrollable=True, vertical_scroll_only=True, visible=True)]],
                           key=frame_key, pad=pad, size=size, background_color=header_color)
 
         return layout
 
-    def entry_layout(self, index, window):
+    def entry_layout(self, index, annotation_code: str = None):
         """
         Create a layout for an entry in the data list.
         """
         collection = self.collection
+        annotation_rules = self.annotation_rules
         modifiers = self.modifiers
         level = self.level
         editable = self.editable
         display_cols = self.display_columns
         flag_cols = self.flags
-        #entries = window[self.key_lookup('Element')]
 
         row = collection.data(indices=index).squeeze()
         display_row = collection.format_display(indices=index).squeeze()
@@ -3622,11 +3638,21 @@ class DataList(RecordElement):
             warning = None
 
         # Annotation strip
+        try:
+            annotation_entry = annotation_rules[annotation_code]
+        except KeyError:  # no code supplied
+            annot_bg_color = icon_color
+            annot_desc = ''
+        else:
+            annot_bg_color = annotation_entry['BackgroundColor']
+            annot_desc = annotation_entry['Description']
+
         annot_key = entry_elements['Annotation']
-        column1 = sg.Col([[sg.Canvas(key=annot_key, size=(annot_w, frame_h), background_color=icon_color)]],
+        column1 = sg.Col([[sg.Canvas(key=annot_key, size=(annot_w, frame_h), background_color=annot_bg_color,
+                                     tooltip=annot_desc)]],
                          background_color=icon_color)
 
-        # Listbox icon
+        # Icon
         icon_path = settings.get_icon_path(self.icon)
         if icon_path is None:
             icon_path = settings.get_icon_path('default')
@@ -3637,13 +3663,8 @@ class DataList(RecordElement):
 
         # List entry data and element action buttons
 
-        # Listbox header and options button
-        header = display_row[self._header_field]
-        header_key = entry_elements['Header']
-        self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
-        header_layout = [sg.Text(header, key=header_key, enable_events=True, font=font, text_color=select_text_color,
-                                 background_color=bg_color)]
-
+        # Flags and entry data
+        row1 = []
         for flag_col in flag_cols:
             flag_entry = flag_cols[flag_col]
             flag_name = flag_entry['Description']
@@ -3664,11 +3685,206 @@ class DataList(RecordElement):
                 logger.warning(msg)
                 flag_visible = False
 
-            flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((pad_el, 0), 0),
+            flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((0, pad_el), 0),
+                                   visible=flag_visible, background_color=bg_color, tooltip=flag_name)
+
+            row1.append(flag_layout)
+
+        # Warning icon
+        warning_text = '' if pd.isna(warning) else warning
+        warnings_key = entry_elements['Warnings']
+        warnings_icon = mod_const.WARNING_FLAG_ICON
+        warning_visible = True if warning_text else False
+        row1.append(sg.Image(data=warnings_icon, key=warnings_key, size=flag_size, pad=((pad_el, 0), 0),
+                             visible=warning_visible, background_color=bg_color, tooltip=warning_text))
+
+        # Primary entry field
+        header = display_row[self._header_field]
+        header_key = entry_elements['Header']
+        self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
+        row1.append(sg.Text(header, key=header_key, enable_events=True, font=font,
+                            text_color=select_text_color, background_color=bg_color))
+
+        # Warning icon
+        warning_text = '' if pd.isna(warning) else warning
+        warnings_key = entry_elements['Warnings']
+        warnings_icon = mod_const.WARNING_FLAG_ICON
+        warning_visible = True if warning_text else False
+        row1.append(sg.Image(data=warnings_icon, key=warnings_key, size=flag_size, pad=((pad_el, 0), 0),
+                             visible=warning_visible, background_color=bg_color, tooltip=warning_text))
+
+        # Entry details
+        for i, column in enumerate(display_cols):
+            col_alias = display_cols[column]
+            try:
+                col_value = display_row[column]
+            except KeyError:
+                msg = self.format_log('missing value for display field {FIELD}'.format(FIELD=column))
+                logger.warning(msg)
+                continue
+
+            col_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=column, INDEX=index)
+            entry_elements[column] = col_key
+
+            row1.append(sg.VerticalSeparator(pad=(pad_h, 0)))
+            row1.append(sg.Text(col_value, key=col_key, font=font, text_color=text_color, background_color=bg_color,
+                                tooltip=col_alias))
+
+        # Listbox notes
+        notes_key = entry_elements['Notes']
+        row2 = [sg.Text(note_text, key=notes_key, size=(20, 1), font=font, text_color=disabled_text_color,
+                        background_color=bg_color, tooltip=note_text, metadata={'value': note_text})]
+
+        column3 = sg.Col([row1, row2], pad=(pad_h, 0), background_color=bg_color, expand_x=True)
+
+        # Listbox actions
+        delete_key = entry_elements['Delete']
+        edit_key = entry_elements['Edit']
+        self.bindings.update({edit_key: 'Edit:{INDEX}'.format(INDEX=index),
+                              delete_key: 'Delete:{INDEX}'.format(INDEX=index)})
+
+        action_layout = [sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
+                                   border_width=0, button_color=(text_color, bg_color), visible=can_edit),
+                         sg.Button('', key=delete_key, image_data=mod_const.DISCARD_ICON, pad=(pad_action, 0),
+                                   border_width=0, button_color=(text_color, bg_color), visible=can_delete)
+                         ]
+        column4 = sg.Col([action_layout], pad=(pad_action, 0), background_color=bg_color, element_justification='c',
+                         vertical_alignment='c')
+
+        # Add the index to list of entry indices
+        self.indices.append(index)
+
+        # for element in entry_elements:
+        self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
+
+        # Create the entry layout
+        entry_vis = not collection.get_state('deleted', indices=[index])
+        entry_key = entry_elements['Entry']
+        layout = [sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
+                                  pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
+                                  metadata={'visible': entry_vis}))]
+
+        return layout
+
+    def entry_layout_old(self, index, annotation_code: str = None):
+        """
+        Create a layout for an entry in the data list.
+        """
+        collection = self.collection
+        annotation_rules = self.annotation_rules
+        modifiers = self.modifiers
+        level = self.level
+        editable = self.editable
+        display_cols = self.display_columns
+        flag_cols = self.flags
+
+        row = collection.data(indices=index).squeeze()
+        display_row = collection.format_display(indices=index).squeeze()
+
+        entry_elements = {i: '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=i, INDEX=index) for
+                          i in ('Entry', 'Annotation', 'Header', 'Delete', 'Edit', 'Notes', 'Warnings')}
+
+        # Allowed actions and visibility of component elements
+        is_disabled = False if (editable is True and level < 1) else True
+        can_delete = True if (modifiers['delete'] is True and not is_disabled) else False
+        can_open = True if (modifiers['open'] is True and editable and level < 2) else False
+
+        # layout options
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+        pad_action = int(pad_h / 2)
+
+        font = mod_const.LARGE_FONT
+
+        text_color = mod_const.DEFAULT_TEXT_COLOR
+        icon_color = mod_const.FRAME_COLOR
+        disabled_text_color = mod_const.DISABLED_TEXT_COLOR
+        bg_color = self.bg_col
+        select_text_color = mod_const.SELECTED_TEXT_COLOR if can_open else mod_const.DISABLED_TEXT_COLOR
+
+        width, height = self._dimensions
+        frame_w = width - pad_el * 2
+        frame_h = mod_const.LISTBOX_HEIGHT
+
+        icon_w = int(frame_h * 0.8)
+        annot_w = 5
+        flag_size = mod_const.FLAG_ICON_SIZE
+
+        # List entry layout
+        if self._notes_field:
+            notes = display_row[self._notes_field]
+            can_edit = True if (editable and level < 2) else False
+        else:
+            notes = None
+            can_edit = False
+
+        note_text = '' if pd.isna(notes) else notes
+
+        if self._warning_field:
+            warning = display_row[self._warning_field]
+        else:
+            warning = None
+
+        # Annotation strip
+        try:
+            annotation_entry = annotation_rules[annotation_code]
+        except KeyError:  # no code supplied
+            annot_bg_color = icon_color
+            annot_desc = ''
+        else:
+            annot_bg_color = annotation_entry['BackgroundColor']
+            annot_desc = annotation_entry['Description']
+
+        annot_key = entry_elements['Annotation']
+        column1 = sg.Col([[sg.Canvas(key=annot_key, size=(annot_w, frame_h), background_color=annot_bg_color,
+                                     tooltip=annot_desc)]],
+                         background_color=icon_color)
+
+        # Icon
+        icon_path = settings.get_icon_path(self.icon)
+        if icon_path is None:
+            icon_path = settings.get_icon_path('default')
+
+        column2 = sg.Col([[sg.Image(filename=icon_path, size=(icon_w, frame_h), pad=(0, 0),
+                                    background_color=icon_color)]],
+                         background_color=icon_color, element_justification='c', vertical_alignment='c')
+
+        # List entry data and element action buttons
+
+        # Flags and entry data
+        header_layout = []
+        for flag_col in flag_cols:
+            flag_entry = flag_cols[flag_col]
+            flag_name = flag_entry['Description']
+            flag_icon = flag_entry['Icon']
+
+            flag_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=flag_col, INDEX=index)
+            entry_elements[flag_col] = flag_key
+
+            try:
+                flag_visible = bool(int(row[flag_col]))
+            except KeyError:
+                msg = self.format_log('missing value for flag {FIELD}'.format(FIELD=flag_col))
+                logger.warning(msg)
+                flag_visible = False
+            except (ValueError, TypeError):
+                msg = self.format_log('unknown value "{VAL}" set for flag {FIELD}'
+                                      .format(VAL=row[flag_col], FIELD=flag_col))
+                logger.warning(msg)
+                flag_visible = False
+
+            flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((0, pad_el), 0),
                                    visible=flag_visible, background_color=bg_color, tooltip=flag_name)
 
             header_layout.append(flag_layout)
 
+        header = display_row[self._header_field]
+        header_key = entry_elements['Header']
+        self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
+        header_layout.append(sg.Text(header, key=header_key, enable_events=True, font=font,
+                                     text_color=select_text_color, background_color=bg_color))
+
+        # Entry notes
         warning_text = '' if pd.isna(warning) else warning
         warnings_key = entry_elements['Warnings']
         warnings_icon = mod_const.WARNING_FLAG_ICON
@@ -3728,21 +3944,23 @@ class DataList(RecordElement):
         # Create the entry layout
         entry_vis = not collection.get_state('deleted', indices=[index])
         entry_key = entry_elements['Entry']
-        layout = [[sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
-                                   pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
-                                   metadata={'visible': entry_vis}))]]
+        layout = [sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
+                                  pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
+                                  metadata={'visible': entry_vis}))]
 
         return layout
 
-    def update_entry_display(self, index, window):
+    def update_entry_display(self, index, window, annotation_code: str = None):
         """
         Update an entry layout with new data.
         """
         flag_cols = self.flags
         display_cols = self.display_columns
+        collection = self.collection
+        annotation_rules = self.annotation_rules
 
-        row = self.collection.data(indices=index).squeeze()
-        display_row = self.collection.format_display(indices=index).squeeze()
+        row = collection.data(indices=index).squeeze()
+        display_row = collection.format_display(indices=index).squeeze()
 
         # Update visibility of flag icons
         for flag_col in flag_cols:
@@ -3784,78 +4002,73 @@ class DataList(RecordElement):
         window[warnings_key].set_tooltip(warning_text)
         window[warnings_key].update(visible=warning_visible)
 
+        # Update entry annotations
+        annotation_key = self.key_lookup('Annotation:{}'.format(index))
+        try:
+            annotation_entry = annotation_rules[annotation_code]
+        except KeyError:
+            bg_color = mod_const.FRAME_COLOR
+            tooltip = ''
+        else:
+            bg_color = annotation_entry['BackgroundColor']
+            tooltip = annotation_entry['Description']
+
+        window[annotation_key].set_tooltip(tooltip)
+        window[annotation_key].Widget.config(background=bg_color)
+
     def update_display(self, window):
         """
         Update the record element display.
         """
         collection = self.collection
-        annotation_rules = self.annotation_rules
         entry_indices = self.indices
+        entry_container = window[self.key_lookup('Element')]
 
+        # Create or update index entries
         df = collection.data(current=False)
         annotations = self.annotate_display(df)
 
-        # Create or update index entries
-        entry_container = window[self.key_lookup('Element')]
-        #resize_event = False
         n_entry = 0
         for index in df.index.tolist():
-            if index in entry_indices:
-                entry_key = self.key_lookup('Entry:{}'.format(index))
+            entry_deleted = collection.get_state('deleted', indices=[index])
 
-                entry_deleted = collection.get_state('deleted', indices=[index])
-                if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
-
-                    if window[entry_key].metadata['visible']:  # entry layout is not yet hidden from the display
-                        window[entry_key].update(visible=False)
-                        window[entry_key].metadata['visible'] = False
-                        #resize_event = True
-                else:  # these entries should all have visible layouts
-                    n_entry += 1
-
-                    if not window[entry_key].metadata['visible']:  # entry layout should be updated and made visible
-                        #resize_event = True
-                        self.update_entry_display(index, window)
-
-                        window[entry_key].update(visible=True)
-                        window[entry_key].metadata['visible'] = True
-            else:  # a layout for the entry has not yet been created
-                #resize_event = True
-
-                # Add the entry layout to the entries container
-                entry_layout = self.entry_layout(index, window)
-                window.extend_layout(entry_container, entry_layout)
-
-                # Add the entry to the count if visible
-                entry_key = self.key_lookup('Entry:{}'.format(index))
-                if window[entry_key].metadata['visible']:
-                    n_entry += 1
-
-            # Add any annotations to the entry
-            annotation_key = self.key_lookup('Annotation:{}'.format(index))
             try:
                 annotation_code = annotations[index]
             except KeyError:
-                bg_color = mod_const.FRAME_COLOR
-                tooltip = ''
-            else:
-                annotation_entry = annotation_rules[annotation_code]
-                bg_color = annotation_entry['BackgroundColor']
-                tooltip = annotation_entry['Description']
+                annotation_code = None
 
-            window[annotation_key].set_tooltip(tooltip)
-            window[annotation_key].Widget.config(background=bg_color)
+            if index in entry_indices:  # layout was already created for the entry
+                entry_key = self.key_lookup('Entry:{}'.format(index))
+
+                if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
+                    # Set the visibility of the entry frame
+                    if window[entry_key].metadata['visible']:  # entry layout is not yet hidden from the display
+                        window[entry_key].update(visible=False)
+                        window[entry_key].metadata['visible'] = False
+                else:  # these entries should all have visible layouts
+                    n_entry += 1
+                    if not window[entry_key].metadata['visible']:  # entry layout should be updated and made visible
+                        # Update the display for the entry. This is required after a reset due to the limitations of
+                        # PySimpleGUI in not allowing the removal of rows in a container element like columns
+                        self.update_entry_display(index, window, annotation_code=annotation_code)
+
+                        # Set the visibility of the entry frame
+                        window[entry_key].update(visible=True)
+                        window[entry_key].metadata['visible'] = True
+            else:  # a layout for the entry has not yet been created
+                # Add the entry layout to the entries container
+                entry_layout = self.entry_layout(index, annotation_code=annotation_code)
+                window.extend_layout(entry_container, [entry_layout])
+
+                # Add the entry to the count if visible
+                if not entry_deleted:
+                    n_entry += 1
 
         entry_container.contents_changed()
 
         # Update the row count
         row_element = window[self.key_lookup('RowCount')]
         row_element.update(value=n_entry)
-
-        #if resize_event:
-        #    self.resize(window)
-
-        #return resize_event
 
     def annotate_display(self, df):
         """

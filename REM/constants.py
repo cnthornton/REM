@@ -99,7 +99,7 @@ TBL_ROW_HEIGHT = 25  # default table row height
 TBL_NROW = 5  # default table nrow
 
 # Data List
-LISTBOX_HEIGHT = 80  # set listbox height in pixels
+LISTBOX_HEIGHT = 65  # set listbox height in pixels
 LISTBOX_WIDTH = 120  # default width of the listbox in pixels
 
 # Data Variable Elements
