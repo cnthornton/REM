@@ -1026,7 +1026,7 @@ class DataTable(RecordElement):
                 indices = self.get_index(select_row_indices)
                 if len(indices) > 0:
                     self.delete_rows(indices)
-                    #collection.delete(indices)
+                    # collection.delete(indices)
                     update_event = True
 
             # Import rows button clicked
@@ -1765,23 +1765,26 @@ class DataTable(RecordElement):
 
         actions_bar.append(sg.Col([action_layout], justification='l', background_color=header_col, expand_x=True))
 
-        if self.tally_rule is None:
-            total_desc = 'Rows:'
+        total_desc = 'Number of rows in the table' if not self.tally_rule else 'Summary total'
+        init_total = self.calculate_total()
+        if isinstance(init_total, float):
+            init_total = '{:,.2f}'.format(init_total)
         else:
-            total_desc = 'Total:'
+            init_total = str(init_total)
 
-        init_totals = self.calculate_total()
-        if isinstance(init_totals, float):
-            init_totals = '{:,.2f}'.format(init_totals)
-        else:
-            init_totals = str(init_totals)
-        actions_bar.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
-                                            background_color=header_col),
-                                    sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
-                                            font=font, background_color=row_col, justification='r', relief='sunken',
-                                            metadata={'name': self.name})]],
-                                  pad=(pad_el, 0), justification='r', element_justification='r', vertical_alignment='b',
-                                  background_color=header_col, expand_x=True, expand_y=False))
+        row_count = sg.Frame('', [[sg.Image(data=mod_const.SUMM_ICON, background_color=border_col, expand_y=True,
+                                            tooltip=total_desc),
+                                   sg.Text(init_total, key=total_key, size=(12, 1), font=bold_font,
+                                           background_color=disabled_bg_col, justification='r')]],
+                             pad=(pad_el, 0), title_color=border_col, element_justification='r')
+        actions_bar.append(row_count)
+        #actions_bar.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
+        #                                    background_color=header_col),
+        #                            sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
+        #                                    font=font, background_color=row_col, justification='r', relief='sunken',
+        #                                    metadata={'name': self.name})]],
+        #                          pad=(pad_el, 0), justification='r', element_justification='r', vertical_alignment='b',
+        #                          background_color=header_col, expand_x=True, expand_y=False))
 
         row6 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col,
                        vertical_alignment='c', expand_x=True, expand_y=True)]
@@ -2779,17 +2782,17 @@ class ReferenceTable(RecordTable):
         ref_df = ref_df.reindex(index=df[id_col].tolist())
         ref_df = ref_df.set_index(df.index)
 
-        #print('indices of records data before merging:')
-        #print(df.index)
+        # print('indices of records data before merging:')
+        # print(df.index)
 
-        #print('indices of reference data before merging:')
-        #print(ref_df.index)
+        # print('indices of reference data before merging:')
+        # print(ref_df.index)
 
-        #print('merging the records and the reference tables:')
+        # print('merging the records and the reference tables:')
         merged_df = df.join(ref_df, how='left')
 
-        #print('indices of records data after merging:')
-        #print(merged_df.index)
+        # print('indices of records data after merging:')
+        # print(merged_df.index)
 
         return merged_df
 
@@ -2810,7 +2813,8 @@ class ReferenceTable(RecordTable):
         deleted_ids = records_data.row_ids(indices=indices)
         print('{}: removing records {} from the table'.format(self.name, deleted_ids))
         deleted_ref_inds = ref_data.get_index(deleted_ids)
-        print('{}: also deleting references associated with the records at indices {} in the reference table'.format(self.name, deleted_ref_inds))
+        print('{}: also deleting references associated with the records at indices {} in the reference table'.format(
+            self.name, deleted_ref_inds))
         ref_data.delete(deleted_ref_inds, inplace=True)
 
         return df
@@ -3053,7 +3057,7 @@ class DataList(RecordElement):
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
         self.etype = 'list'
 
-        record_elements = ('Frame', 'Description', 'Options')
+        record_elements = ('Frame', 'Description', 'Options', 'RowCount')
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
@@ -3407,9 +3411,10 @@ class DataList(RecordElement):
                 self.run_header_event(index)
 
         if update_event:
-            resize_event = self.update_display(window)
+            #resize_event = self.update_display(window)
+            self.update_display(window)
             triggers['ValueEvent'] = True
-            triggers['ResizeEvent'] = resize_event
+            #triggers['ResizeEvent'] = resize_event
 
         return triggers
 
@@ -3464,7 +3469,7 @@ class DataList(RecordElement):
             window[notes_key].expand(expand_x=True)
 
         if (nrow < 2) and (len(indices) > 1):  # make it obvious that there are is than one entry in the list
-            list_h += int(box_h / 5)  # adds an additional fifth of a box height to the container
+            list_h += int(box_h / 5)  # adds another fifth of a box height to the container
 
         desc_key = self.key_lookup('Description')
         new_h = window[desc_key].get_size()[1] + pad_el * 4 + border_w + list_h if not new_h else new_h
@@ -3476,7 +3481,7 @@ class DataList(RecordElement):
 
         self._dimensions = new_size
 
-        # Resize the column of list entries
+        # Resize the container of list entries
         elem_key = self.key_lookup('Element')
         list_w = new_w - pad_el * 2
         mod_lo.set_size(window, elem_key, (list_w, list_h))
@@ -3497,13 +3502,18 @@ class DataList(RecordElement):
 
         tooltip = tooltip if tooltip else ''
 
+        if isinstance(bg_color, str) and bg_color.startswith('#') and len(bg_color) == 7:
+            self.bg_col = bg_color
+
         # layout options
         font = mod_const.BOLD_LARGE_FONT
         menu_font = mod_const.MAIN_FONT
 
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        header_col = mod_const.TBL_HEADER_COLOR if bg_color is None else bg_color
-        bg_col = mod_const.DEFAULT_BG_COLOR
+        text_color = mod_const.DEFAULT_TEXT_COLOR
+        header_color = mod_const.TBL_HEADER_COLOR
+        bg_color = mod_const.DEFAULT_BG_COLOR
+        field_color = mod_const.DISABLED_BG_COLOR
+        border_color = mod_const.BORDER_COLOR
 
         pad_el = mod_const.ELEM_PAD
         pad = padding if padding and isinstance(padding, tuple) else self.padding
@@ -3511,40 +3521,48 @@ class DataList(RecordElement):
 
         # Element description
         desc_key = self.key_lookup('Description')
-        desc_layout = sg.Col([[sg.Text(self.description, auto_size_text=True, pad=(0, 0), text_color=text_col,
-                                       font=font, background_color=header_col, tooltip=tooltip)]],
-                             key=desc_key, pad=(pad_el, pad_el), background_color=header_col, expand_x=True,
+        header_left = sg.Col([[sg.Text(self.description, auto_size_text=True, pad=(0, 0), text_color=text_color,
+                                       font=font, background_color=header_color, tooltip=tooltip)]],
+                             key=desc_key, pad=(pad_el, pad_el), background_color=header_color, expand_x=True,
                              vertical_alignment='c')
 
+        # Element operations button
         options_list = []
         for action in actions:
             action_entry = actions[action]
             action_desc = action_entry['Description']
             options_list.append(action_desc)
 
-        if len(options_list) > 0:
-            options_visible = True
-        else:
-            options_visible = False
+        options_vis = True if len(options_list) > 0 else False
 
         menu = ['&Options', options_list]
         options_key = self.key_lookup('Options')
-        options_layout = sg.Col([[sg.ButtonMenu('', menu, key=options_key, image_data=mod_const.OPTIONS_ICON,
-                                                visible=options_visible, font=menu_font,
-                                                button_color=(text_col, header_col), border_width=0)]],
-                                pad=(pad_el, pad_el), background_color=header_col, vertical_alignment='c')
+        options_bttn = sg.ButtonMenu('', menu, key=options_key, image_data=mod_const.OPTIONS_ICON, visible=options_vis,
+                                     font=menu_font, button_color=(text_color, header_color), border_width=0)
 
+        # List entry count
+        nrow_key = self.key_lookup('RowCount')
+        row_count = sg.Frame('', [[sg.Image(data=mod_const.SUMM_ICON, background_color=border_color, expand_y=True,
+                                            tooltip=self.description),
+                                   sg.Text('0', key=nrow_key, size=(8, 1), font=font, background_color=field_color,
+                                           justification='r', tooltip='Number of entries')]],
+                             pad=((0, pad_el), 0), title_color=border_color)
+
+        header_right = sg.Col([[row_count, options_bttn]],
+                              pad=(pad_el, pad_el), background_color=header_color, vertical_alignment='c')
+
+        # Element layout
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
-        layout = sg.Frame('', [[desc_layout, options_layout],
-                               [sg.Col([[sg.HorizontalSeparator()]], background_color=header_col, expand_x=True)],
-                               [sg.Col([[]], key=elem_key, background_color=bg_col, expand_x=True, expand_y=True,
+        layout = sg.Frame('', [[header_left, header_right],
+                               [sg.Col([[sg.HorizontalSeparator()]], background_color=header_color, expand_x=True)],
+                               [sg.Col([[]], key=elem_key, background_color=bg_color, expand_x=True, expand_y=True,
                                        scrollable=True, vertical_scroll_only=True, visible=True)]],
-                          key=frame_key, pad=pad, size=size, background_color=header_col)
+                          key=frame_key, pad=pad, size=size, background_color=header_color)
 
         return layout
 
-    def create_entry(self, index, window):
+    def entry_layout(self, index, window):
         """
         Create a layout for an entry in the data list.
         """
@@ -3554,7 +3572,7 @@ class DataList(RecordElement):
         editable = self.editable
         display_cols = self.display_columns
         flag_cols = self.flags
-        entries = window[self.key_lookup('Element')]
+        #entries = window[self.key_lookup('Element')]
 
         row = collection.data(indices=index).squeeze()
         display_row = collection.format_display(indices=index).squeeze()
@@ -3701,23 +3719,22 @@ class DataList(RecordElement):
         column4 = sg.Col([action_layout], pad=(pad_action, 0), background_color=bg_color, element_justification='c',
                          vertical_alignment='c')
 
-        # Create the entry frame
-        entry_vis = not collection.get_state('deleted', indices=[index])
-        entry_key = entry_elements['Entry']
-        layout = [[sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
-                                   pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
-                                   metadata={'visible': entry_vis}))]]
-
-        # Add the entry frame to the entries column
-        window.extend_layout(entries, layout)
-
         # Add the index to list of entry indices
         self.indices.append(index)
 
         # for element in entry_elements:
         self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
 
-    def update_entry(self, index, window):
+        # Create the entry layout
+        entry_vis = not collection.get_state('deleted', indices=[index])
+        entry_key = entry_elements['Entry']
+        layout = [[sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
+                                   pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
+                                   metadata={'visible': entry_vis}))]]
+
+        return layout
+
+    def update_entry_display(self, index, window):
         """
         Update an entry layout with new data.
         """
@@ -3776,36 +3793,45 @@ class DataList(RecordElement):
         entry_indices = self.indices
 
         df = collection.data(current=False)
-        print('updating the reference display')
-        print(df)
         annotations = self.annotate_display(df)
 
         # Create or update index entries
-        resize_event = False
+        entry_container = window[self.key_lookup('Element')]
+        #resize_event = False
+        n_entry = 0
         for index in df.index.tolist():
             if index in entry_indices:
                 entry_key = self.key_lookup('Entry:{}'.format(index))
-                entry_deleted = collection.get_state('deleted', indices=[index])
-                print('entry at index {} is set to deleted: {}'.format(index, entry_deleted))
 
+                entry_deleted = collection.get_state('deleted', indices=[index])
                 if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
 
                     if window[entry_key].metadata['visible']:  # entry layout is not yet hidden from the display
                         window[entry_key].update(visible=False)
                         window[entry_key].metadata['visible'] = False
-                        resize_event = True
+                        #resize_event = True
                 else:  # these entries should all have visible layouts
+                    n_entry += 1
+
                     if not window[entry_key].metadata['visible']:  # entry layout should be updated and made visible
-                        resize_event = True
-                        self.update_entry(index, window)
+                        #resize_event = True
+                        self.update_entry_display(index, window)
 
                         window[entry_key].update(visible=True)
                         window[entry_key].metadata['visible'] = True
             else:  # a layout for the entry has not yet been created
-                resize_event = True
-                self.create_entry(index, window)
+                #resize_event = True
 
-            # Annotate the entry
+                # Add the entry layout to the entries container
+                entry_layout = self.entry_layout(index, window)
+                window.extend_layout(entry_container, entry_layout)
+
+                # Add the entry to the count if visible
+                entry_key = self.key_lookup('Entry:{}'.format(index))
+                if window[entry_key].metadata['visible']:
+                    n_entry += 1
+
+            # Add any annotations to the entry
             annotation_key = self.key_lookup('Annotation:{}'.format(index))
             try:
                 annotation_code = annotations[index]
@@ -3820,10 +3846,16 @@ class DataList(RecordElement):
             window[annotation_key].set_tooltip(tooltip)
             window[annotation_key].Widget.config(background=bg_color)
 
-        if resize_event:
-            self.resize(window)
+        entry_container.contents_changed()
 
-        return resize_event
+        # Update the row count
+        row_element = window[self.key_lookup('RowCount')]
+        row_element.update(value=n_entry)
+
+        #if resize_event:
+        #    self.resize(window)
+
+        #return resize_event
 
     def annotate_display(self, df):
         """
@@ -4375,13 +4407,13 @@ class DataUnit(RecordElement):
         window[elem_key].expand(expand_x=True)
 
         window.refresh()
-        #print('resizing record element {}'.format(self.name, new_w))
-        #print('desired width of record element {}: {}'.format(self.name, new_w))
-        #print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
-        #print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
-        #print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
-        #print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
-        #print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
+        # print('resizing record element {}'.format(self.name, new_w))
+        # print('desired width of record element {}: {}'.format(self.name, new_w))
+        # print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
+        # print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
+        # print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
+        # print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        # print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         self._dimensions = (new_w, new_h)
 
@@ -5018,7 +5050,7 @@ class InputFieldInput(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        #value_fmt = self.format_display(editing=editing)
+        # value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
@@ -5140,7 +5172,7 @@ class InputFieldDate(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        #value_fmt = self.format_display(editing=editing)
+        # value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
@@ -5297,7 +5329,7 @@ class InputFieldCombo(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        #value_fmt = self.format_display(editing=editing)
+        # value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
@@ -5447,7 +5479,7 @@ class InputFieldMultiline(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        #value_fmt = self.format_display(editing=editing)
+        # value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
