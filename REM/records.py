@@ -3221,7 +3221,7 @@ class DatabaseRecord:
                                            sg.Col([header_left], justification='l', expand_x=True,
                                                   background_color=headings_bg_col),
                                            sg.Col([header_right], justification='r', background_color=headings_bg_col)
-                                           ]], background_color=headings_bg_col, expand_x=True)]
+                                           ]], background_color=headings_bg_col, pad=(0, (0, pad_el*2)), expand_x=True)]
                 sections_layout.append(section_header)
 
                 # Section body layout
@@ -3239,16 +3239,18 @@ class DatabaseRecord:
                     n_elem = len(row_elements)
 
                     row = []
-                    for i, element_name in enumerate(row_elements):
-                        element = self.fetch_element(element_name)
-                        element_layout = element.layout(editable=editable, overwrite=is_new, level=level)
+                    for i, elem_name in enumerate(row_elements):
+                        element = self.fetch_element(elem_name)
 
-                        row.append(element_layout)
+                        elem_pad = (0, (0, pad_v)) if element.is_type('collection') else (0, 0)
+                        elem_layout = element.layout(editable=editable, overwrite=is_new, level=level, padding=elem_pad)
+
+                        row.append(elem_layout)
                         if i != (n_elem - 1):  # don't add alignment element after the last element in the row
                             row.append(sg.Push(background_color=bg_col))
 
                         if not element.is_type('blank'):
-                            display_elements.append(element_name)
+                            display_elements.append(elem_name)
 
                     section_layout.append(row)
 
@@ -3342,18 +3344,13 @@ class DatabaseRecord:
                 row_elements = section_layout[row]
                 n_col = len(row_elements)
 
-                #column_div = divmod(width - section_w_pad - spacer_w * (n_col - 1), n_col)
-                #column_w = column_div[0] + column_div[1]
-
                 for i, element_name in enumerate(row_elements):
                     record_element = self.fetch_element(element_name)
 
                     if n_col == 1:  # row contains 1 columns spanning the entire row
                         elem_w = width - section_w_pad
-                        #elem_w = column_w * n_col + spacer_w * (n_col - 1)
                     elif n_col == 2:
                         if i == 0:  # first element in the row of two elements takes up two spaces
-                            #elem_w = column_w * 2 + spacer_w
                             elem_w = column_w * n_col + spacer_w * (n_col - 1)
                         else:  # last element in the row of two elements takes up only one space
                             elem_w = column_w
