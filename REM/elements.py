@@ -1014,7 +1014,7 @@ class DataTable(RecordElement):
                 else:
                     logger.warning(self.format_log('no output file selected'))
 
-            # Delete rows button clicked
+            # Delete rows action button clicked
             elif element_event == 'Delete':
                 if not self.enabled(element_event):
                     return triggers
@@ -1029,7 +1029,7 @@ class DataTable(RecordElement):
                     # collection.delete(indices)
                     update_event = True
 
-            # Import rows button clicked
+            # Import rows action button clicked
             elif element_event == 'Import':
                 if not self.enabled(element_event):
                     return triggers
@@ -1046,6 +1046,21 @@ class DataTable(RecordElement):
                     if not import_rows.empty:
                         collection.append(import_rows, new=True)
 
+                    update_event = True
+
+            # Merge rows action button clicked
+            elif element_event == 'Merge':
+                if not self.enabled(element_event):
+                    return triggers
+
+                # Find rows selected by user for merging
+                select_row_indices = values[elem_key]
+
+                # Get the real indices of the selected rows
+                indices = self.get_index(select_row_indices)
+                if len(indices) > 1:  # merging requires two or more rows
+                    self.merge_rows(indices)
+                    # collection.delete(indices)
                     update_event = True
 
         if update_event:
@@ -2115,14 +2130,27 @@ class DataTable(RecordElement):
 
         return df
 
+    def merge_rows(self, indices, inplace: bool = True):
+        """
+        Merge two or more rows in the table.
+
+        Arguments:
+            indices (list): real indices of the desired data to remove from the collection.
+
+            inplace (bool): merge rows in place [Default: True].
+        """
+        df = self.collection.merge(indices, inplace=inplace)
+
+        return df
+
     def delete_rows(self, indices, inplace: bool = True):
         """
         Remove rows from the table collection.
 
         Arguments:
-            indices (list): real indices of the desired data to remove from the collection.
+            indices (list): real indices of the desired rows to remove from the collection.
 
-            inplace (bool): delete data in place [Default: True].
+            inplace (bool): delete rows in place [Default: True].
         """
         df = self.collection.delete(indices, inplace=inplace)
 
@@ -2794,9 +2822,9 @@ class ReferenceTable(RecordTable):
         Remove rows from the table collection.
 
         Arguments:
-            indices (list): real indices of the desired data to remove from the collection.
+            indices (list): real indices of the desired rows to remove from the collection.
 
-            inplace (bool): delete data in place [Default: True].
+            inplace (bool): delete rows in place [Default: True].
         """
         records_data = self.collection
         ref_data = self.references
@@ -3395,6 +3423,7 @@ class DataList(RecordElement):
                 note = mod_win2.add_note_window(current_note)
                 if not pd.isna(note):
                     self.edited = True
+
                     window[note_key].update(value=note)
                     window[note_key].metadata['value'] = note
                     self.collection.update_field(self._notes_field, note, indices=[index])  # also update "edited" state
@@ -3404,10 +3433,8 @@ class DataList(RecordElement):
                 self.run_header_event(index)
 
         if update_event:
-            #resize_event = self.update_display(window)
             self.update_display(window)
             triggers['ValueEvent'] = True
-            #triggers['ResizeEvent'] = resize_event
 
         return triggers
 
@@ -3476,7 +3503,8 @@ class DataList(RecordElement):
 
         # Resize the container of list entries
         elem_key = self.key_lookup('Element')
-        list_w = new_w - pad_el * 2
+        #list_w = new_w - pad_el * 2
+        list_w = new_w
         mod_lo.set_size(window, elem_key, (list_w, list_h))
 
         return window[frame_key].get_size()
@@ -3631,11 +3659,7 @@ class DataList(RecordElement):
             can_edit = False
 
         note_text = '' if pd.isna(notes) else notes
-
-        if self._warning_field:
-            warning = display_row[self._warning_field]
-        else:
-            warning = None
+        warning = display_row[self._warning_field] if self._warning_field else None
 
         # Annotation strip
         try:
@@ -3736,190 +3760,6 @@ class DataList(RecordElement):
                         background_color=bg_color, tooltip=note_text, metadata={'value': note_text})]
 
         column3 = sg.Col([row1, row2], pad=(pad_h, 0), background_color=bg_color, expand_x=True)
-
-        # Listbox actions
-        delete_key = entry_elements['Delete']
-        edit_key = entry_elements['Edit']
-        self.bindings.update({edit_key: 'Edit:{INDEX}'.format(INDEX=index),
-                              delete_key: 'Delete:{INDEX}'.format(INDEX=index)})
-
-        action_layout = [sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
-                                   border_width=0, button_color=(text_color, bg_color), visible=can_edit),
-                         sg.Button('', key=delete_key, image_data=mod_const.DISCARD_ICON, pad=(pad_action, 0),
-                                   border_width=0, button_color=(text_color, bg_color), visible=can_delete)
-                         ]
-        column4 = sg.Col([action_layout], pad=(pad_action, 0), background_color=bg_color, element_justification='c',
-                         vertical_alignment='c')
-
-        # Add the index to list of entry indices
-        self.indices.append(index)
-
-        # for element in entry_elements:
-        self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
-
-        # Create the entry layout
-        entry_vis = not collection.get_state('deleted', indices=[index])
-        entry_key = entry_elements['Entry']
-        layout = [sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
-                                  pad=(pad_el, pad_el), background_color=bg_color, relief='raised', visible=entry_vis,
-                                  metadata={'visible': entry_vis}))]
-
-        return layout
-
-    def entry_layout_old(self, index, annotation_code: str = None):
-        """
-        Create a layout for an entry in the data list.
-        """
-        collection = self.collection
-        annotation_rules = self.annotation_rules
-        modifiers = self.modifiers
-        level = self.level
-        editable = self.editable
-        display_cols = self.display_columns
-        flag_cols = self.flags
-
-        row = collection.data(indices=index).squeeze()
-        display_row = collection.format_display(indices=index).squeeze()
-
-        entry_elements = {i: '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=i, INDEX=index) for
-                          i in ('Entry', 'Annotation', 'Header', 'Delete', 'Edit', 'Notes', 'Warnings')}
-
-        # Allowed actions and visibility of component elements
-        is_disabled = False if (editable is True and level < 1) else True
-        can_delete = True if (modifiers['delete'] is True and not is_disabled) else False
-        can_open = True if (modifiers['open'] is True and editable and level < 2) else False
-
-        # layout options
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-        pad_action = int(pad_h / 2)
-
-        font = mod_const.LARGE_FONT
-
-        text_color = mod_const.DEFAULT_TEXT_COLOR
-        icon_color = mod_const.FRAME_COLOR
-        disabled_text_color = mod_const.DISABLED_TEXT_COLOR
-        bg_color = self.bg_col
-        select_text_color = mod_const.SELECTED_TEXT_COLOR if can_open else mod_const.DISABLED_TEXT_COLOR
-
-        width, height = self._dimensions
-        frame_w = width - pad_el * 2
-        frame_h = mod_const.LISTBOX_HEIGHT
-
-        icon_w = int(frame_h * 0.8)
-        annot_w = 5
-        flag_size = mod_const.FLAG_ICON_SIZE
-
-        # List entry layout
-        if self._notes_field:
-            notes = display_row[self._notes_field]
-            can_edit = True if (editable and level < 2) else False
-        else:
-            notes = None
-            can_edit = False
-
-        note_text = '' if pd.isna(notes) else notes
-
-        if self._warning_field:
-            warning = display_row[self._warning_field]
-        else:
-            warning = None
-
-        # Annotation strip
-        try:
-            annotation_entry = annotation_rules[annotation_code]
-        except KeyError:  # no code supplied
-            annot_bg_color = icon_color
-            annot_desc = ''
-        else:
-            annot_bg_color = annotation_entry['BackgroundColor']
-            annot_desc = annotation_entry['Description']
-
-        annot_key = entry_elements['Annotation']
-        column1 = sg.Col([[sg.Canvas(key=annot_key, size=(annot_w, frame_h), background_color=annot_bg_color,
-                                     tooltip=annot_desc)]],
-                         background_color=icon_color)
-
-        # Icon
-        icon_path = settings.get_icon_path(self.icon)
-        if icon_path is None:
-            icon_path = settings.get_icon_path('default')
-
-        column2 = sg.Col([[sg.Image(filename=icon_path, size=(icon_w, frame_h), pad=(0, 0),
-                                    background_color=icon_color)]],
-                         background_color=icon_color, element_justification='c', vertical_alignment='c')
-
-        # List entry data and element action buttons
-
-        # Flags and entry data
-        header_layout = []
-        for flag_col in flag_cols:
-            flag_entry = flag_cols[flag_col]
-            flag_name = flag_entry['Description']
-            flag_icon = flag_entry['Icon']
-
-            flag_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=flag_col, INDEX=index)
-            entry_elements[flag_col] = flag_key
-
-            try:
-                flag_visible = bool(int(row[flag_col]))
-            except KeyError:
-                msg = self.format_log('missing value for flag {FIELD}'.format(FIELD=flag_col))
-                logger.warning(msg)
-                flag_visible = False
-            except (ValueError, TypeError):
-                msg = self.format_log('unknown value "{VAL}" set for flag {FIELD}'
-                                      .format(VAL=row[flag_col], FIELD=flag_col))
-                logger.warning(msg)
-                flag_visible = False
-
-            flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((0, pad_el), 0),
-                                   visible=flag_visible, background_color=bg_color, tooltip=flag_name)
-
-            header_layout.append(flag_layout)
-
-        header = display_row[self._header_field]
-        header_key = entry_elements['Header']
-        self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
-        header_layout.append(sg.Text(header, key=header_key, enable_events=True, font=font,
-                                     text_color=select_text_color, background_color=bg_color))
-
-        # Entry notes
-        warning_text = '' if pd.isna(warning) else warning
-        warnings_key = entry_elements['Warnings']
-        warnings_icon = mod_const.WARNING_FLAG_ICON
-        warning_visible = True if warning_text else False
-        header_layout.append(sg.Image(data=warnings_icon, key=warnings_key, size=flag_size, pad=((pad_el, 0), 0),
-                                      visible=warning_visible, background_color=bg_color, tooltip=warning_text))
-
-        row1 = [sg.Col([header_layout], background_color=bg_color, element_justification='l',
-                       vertical_alignment='c', expand_x=True)]
-
-        # Listbox details
-        row2 = []
-        for i, column in enumerate(display_cols):
-            col_alias = display_cols[column]
-            try:
-                col_value = display_row[column]
-            except KeyError:
-                msg = self.format_log('missing value for display field {FIELD}'.format(FIELD=column))
-                logger.warning(msg)
-                continue
-
-            col_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=column, INDEX=index)
-            entry_elements[column] = col_key
-
-            if i != 0:
-                row2.append(sg.VerticalSeparator(pad=(pad_h, 0)))
-            row2.append(sg.Text(col_value, key=col_key, font=font, text_color=text_color, background_color=bg_color,
-                                tooltip=col_alias))
-
-        # Listbox notes
-        notes_key = entry_elements['Notes']
-        row3 = [sg.Text(note_text, key=notes_key, size=(20, 1), font=font, text_color=disabled_text_color,
-                        background_color=bg_color, tooltip=note_text, metadata={'value': note_text})]
-
-        column3 = sg.Col([row1, row2, row3], pad=(pad_h, 0), background_color=bg_color, expand_x=True)
 
         # Listbox actions
         delete_key = entry_elements['Delete']

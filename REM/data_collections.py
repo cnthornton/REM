@@ -730,6 +730,44 @@ class DataCollection:
 
         return df
 
+    def merge(self, indices, inplace: bool = True):
+        """
+        Merge two or more collection entries. Numeric fields will be summed together. Fields of any other datatype will
+        take the value of the first selected entry.
+
+        Arguments:
+            indices (list): indices of the entries to merge.
+
+            inplace (bool): merge in place [Default: True].
+        """
+        dtypes = self.dtypes
+
+        if inplace:
+            df = self.df
+        else:
+            df = self.df.copy()
+
+        if isinstance(indices, list):
+            merge_inds = indices
+        elif isinstance(indices, pd.Series):
+            merge_inds = indices.tolist()
+        else:
+            return df.copy()
+
+        logger.info('DataCollection {NAME}: merging collection entries at indices {IDS}'
+                    .format(NAME=self.name, IDS=merge_inds))
+        first_ind = indices[0]
+
+        for field in df.columns:
+            dtype = dtypes[field]
+            if dtype in settings.supported_int_dtypes or dtype in settings.supported_int_dtypes:
+                merge_val = df.loc[indices, field].sum()
+                df.loc[first_ind, field] = merge_val
+
+        self.delete(indices[1:])
+
+        return df.copy()
+
     def delete(self, indices, inplace: bool = True):
         """
         Remove data from the collection.
@@ -753,7 +791,7 @@ class DataCollection:
         # Set the deleted and edited "state" fields for the indicated rows to True
         df.loc[indices, [self._deleted_column, self._edited_column]] = [True, True]
 
-        return df
+        return df.copy()
 
     def get_state(self, state_field, indices: list = None):
         """
@@ -768,7 +806,7 @@ class DataCollection:
         try:
             field = state_fields[state_field]
         except KeyError:
-            raise KeyError('field must be one of {}'.format(list(state_fields)))
+            raise KeyError('state field must be one of {}'.format(list(state_fields)))
 
         df = self.df.copy()
 
@@ -1258,6 +1296,58 @@ class RecordCollection(DataCollection):
             self.date_column = entry['DateColumn']
         except KeyError:
             self.date_column = 'RecordDate'
+
+    def merge(self, indices, inplace: bool = True):
+        """
+        Merge two or more collection entries. Numeric fields will be summed together. Fields of any other datatype will
+        take the value of an existing entry if within the provided indices else the entry of the first index.
+
+        Arguments:
+            indices (list): indices of the entries to merge.
+
+            inplace (bool): merge in place [Default: True].
+        """
+        dtypes = self.dtypes
+
+        if inplace:
+            df = self.df
+        else:
+            df = self.df.copy()
+
+        if isinstance(indices, list):
+            merge_inds = indices
+        elif isinstance(indices, pd.Series):
+            merge_inds = indices.tolist()
+        else:
+            return df.copy()
+
+        added_states = self.get_state('added', indices)
+        existing_entries = added_states[~added_states]
+        n_exist = len(existing_entries)
+        if n_exist > 1:
+            msg = 'merge does not support the combining of multiple existing entries together'
+            logger.error('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return df.copy()
+        elif n_exist == 1:
+            first_ind = existing_entries.index[0]
+            remaining_inds = [i for i in indices if i != first_ind]
+        else:
+            first_ind = indices[0]
+            remaining_inds = indices[1:]
+
+        logger.info('DataCollection {NAME}: merging collection entries at indices {IDS}'
+                    .format(NAME=self.name, IDS=merge_inds))
+
+        for field in df.columns:
+            dtype = dtypes[field]
+            if dtype in settings.supported_int_dtypes or dtype in settings.supported_int_dtypes:
+                merge_val = df.loc[indices, field].sum()
+                df.loc[first_ind, field] = merge_val
+
+        self.delete(remaining_inds)
+
+        return df.copy()
 
     def append(self, add_df, inplace: bool = True, new: bool = False, reindex: bool = True):
         """
