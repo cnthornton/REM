@@ -286,7 +286,7 @@ class DataCollection:
 
             self.default[field] = default[field]
 
-        self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
+        self.df = self._set_dtypes(data=pd.DataFrame(columns=list(self.dtypes)))
 
     def _get_attr(self, field, attr: str = None):
         """
@@ -437,51 +437,48 @@ class DataCollection:
 
         return df
 
-    def _set_dtypes(self, df=None, dtypes: dict = None):
+    def _set_dtypes(self, data=None):
         """
         Set field data types based on header mapping.
 
         Arguments:
-            df (DataFrame): set data types for the given dataframe instead of the collection dataframe. The alternative
-                dataframe must have the same structure as the collection dataframe.
-
-            dtypes (dict): provide a custom set of field data types to use instead of the collection set.
+            data (DataFrame): set data types for the custom data instead of the collection data. The
+                custom data must have the same structure as the collection dataframe.
         """
-        df = self.df.copy() if df is None else df
-        dtype_map = self.dtypes if dtypes is None else dtypes
+        dtypes = self.dtypes
 
-        if isinstance(df, pd.Series):  # need to convert series to dataframe first
-            df = df.to_frame().T
+        if isinstance(data, pd.DataFrame):
+            df = data
+        elif isinstance(data, pd.Series):  # need to convert series to dataframe first
+            df = data.to_frame().T
+        elif isinstance(data, dict):  # need to convert dictionary to dataframe first
+            df = pd.DataFrame(data)
+        else:  # format all collection data
+            df = self.df.copy()
 
         header = df.columns.tolist()
 
-        if not isinstance(dtype_map, dict):
-            msg = 'failed to set field datatypes - fields must be configured as a dictionary to specify data types'
-            logger.warning('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return df
-
-        for column_name in dtype_map:
-            if column_name not in header:
+        for field in dtypes:
+            if field not in header:
                 msg = 'configured field "{COL}" is not in the header - setting initial value to NaN'\
-                    .format(COL=column_name)
+                    .format(COL=field)
                 logger.warning('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                df[column_name] = None
+                df[field] = None
 
-            dtype = dtype_map[column_name]
-            column = df[column_name]
+            dtype = dtypes[field]
+            raw_values = df[field]
             try:
-                column_values = mod_dm.format_values(column, dtype)
+                formatted_values = mod_dm.format_values(raw_values, dtype)
             except Exception as e:
                 logger.exception('DataCollection {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
-                                 .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
+                                 .format(NAME=self.name, COL=field, DTYPE=dtype, ERR=e))
             else:
                 try:
-                    df.loc[:, column_name] = column_values
+                    df.loc[:, field] = formatted_values
                 except ValueError as e:
                     logger.warning('DataTable {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
-                                   .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
+                                   .format(NAME=self.name, COL=field, DTYPE=dtype, ERR=e))
 
         return df
 
@@ -589,50 +586,49 @@ class DataCollection:
         add_df = self._set_dependants(df=add_df)
 
         # Make sure the data types of the columns are consistent
-        add_df = self._set_dtypes(df=add_df)
+        add_df = self._set_dtypes(data=add_df)
 
         return add_df
 
-    def data(self, current: bool = True, indices: list = None, on=None, edited_only: bool = False,
-             deleted_only: bool = False, added_only: bool = False, drop_na: bool = False, fields: list = None):
+    def data(self, indices: list = None, on=None, edited: bool = None, added: bool = None, deleted: bool = False,
+             drop_na: bool = False, fields: list = None, include_state: bool = False):
         """
         Return the collection data.
 
         Arguments:
-            current (bool): return only the current entries, excluding the deleted entries [Default: True].
-
             indices (list): return entries at the given indices [Default: None].
 
             on: conditions specifying how to select the proper indices based on collection field values. on and indices
                 are mutually exclusive.
 
-            edited_only (bool): return only the entries that have been edited [Default: False].
+            edited (bool): return entries that have been edited [Default: None - don't filter on edited].
 
-            deleted_only (bool): return only the entries that have been deleted from the collection [Default: False].
+            deleted (bool): return entries that have been deleted from the collection [Default: False - don't return
+                entries that have been set as "deleted"].
 
-            added_only (bool): return only the entries that have been added to the collection [Default: False].
+            added (bool): return entries that have been added to the collection [Default: None - don't filter on added].
 
             drop_na (bool): drop columns with all NA/NULL values [Default: False].
 
             fields (list): return data only for the listed fields [Default: return all].
+
+            include_state (bool): include state fields in the output [Default: False].
 
         Returns:
             df (DataFrame): data matching the selection requirements.
         """
         df = self.df.copy()
         dtypes = self.dtypes
-        state_fields = [self._added_column, self._edited_column, self._deleted_column]
+
+        add_field = self._added_column
+        edit_field = self._edited_column
+        del_field = self._deleted_column
+        state_fields = {edit_field: edited, add_field: added, del_field: deleted}
+
         if not (isinstance(fields, list) or isinstance(fields, tuple)):
             fields = list(dtypes)
 
-        select_fields = [i for i in fields if i not in state_fields]
-
-        if current and (indices is not None or deleted_only is True):
-            current = False
-
-        if current:
-            deleted_indices = self._deleted_rows()
-            df.drop(deleted_indices, inplace=True)
+        select_fields = [i for i in fields if i not in state_fields] if not include_state else fields
 
         if isinstance(indices, int):
             sub_inds = [indices]
@@ -640,26 +636,38 @@ class DataCollection:
             sub_inds = indices
         elif on is not None:
             sub_inds = self._subset(on)
-        else:
+        else:  # no subsetting specified, return all entries
             sub_inds = df.index.tolist()
 
         df = df.loc[sub_inds]
 
-        # Filter on edited rows, if desired
-        if edited_only:  # all edited, current edited, or edited and deleted
-            df = df[(df[self._added_column]) | (df[self._edited_column])]
-        elif added_only:  # all added, current added, or added and then deleted
-            df = df[df[self._added_column]]
-        elif deleted_only:
-            df = df[df[self._deleted_column]]
+        # Filter by row state information
+        include = []
+        exclude = []
+        for field in state_fields:
+            field_state = state_fields[field]
+            if field_state is True:
+                include.append(field)
+            elif field_state is False:
+                exclude.append(field)
 
-        # Remove the state fields from the data
-        try:
-            df = df[select_fields]
-        except KeyError:
-            print(df)
-            print(select_fields)
-            raise
+        n_include = len(include)
+        n_exclude = len(exclude)
+        if n_include > 0 and n_exclude > 0:
+            state_filter = '({IN}) & ~({EX})'.format(IN='|'.join(include), EX='|'.join(exclude))
+        elif n_include > 0 and n_exclude == 0:
+            state_filter = '{IN}'.format(IN='|'.join(include))
+        elif n_include == 0 and n_exclude > 0:
+            state_filter = '~({EX})'.format(EX='|'.join(exclude))
+        else:
+            state_filter = None
+
+        if (state_filter is not None) and (not df.empty):
+            print('subsetting collection data with state filter: {}'.format(state_filter))
+            df = df.query(state_filter)
+
+        # Filter by selected fields, excluding state fields
+        df = df[select_fields]
 
         # Remove columns with all null values
         if drop_na:
@@ -853,7 +861,8 @@ class DataCollection:
         Format the table values for display.
         """
         if indices is not None:
-            df = self.data(current=False, indices=indices)
+            #df = self.data(current=False, indices=indices)
+            df = self.data(indices=indices)
         else:
             df = self.data()
 
@@ -890,10 +899,12 @@ class DataCollection:
 
         aliases = self.aliases
 
-        if data is None:
-            df = self.data()
-        else:
-            df = data
+        #if data is None:
+        #    df = self.data()
+        #else:
+        #    df = data
+
+        df = data if isinstance(data, pd.DataFrame) else self.data()
 
         try:
             display_col = df[field]
@@ -938,10 +949,12 @@ class DataCollection:
             logger.warning('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             statistic = None
 
-        if indices:
-            df = self.data(current=False, indices=indices)
-        else:
-            df = self.data()
+        #if indices:
+        #    df = self.data(current=False, indices=indices)
+        #else:
+        #    df = self.data()
+
+        df = self.data(indices=indices)
 
         try:
             col_values = df[field]
@@ -1106,7 +1119,7 @@ class DataCollection:
         """
         Reset the collection to default.
         """
-        self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
+        self.df = self._set_dtypes(data=pd.DataFrame(columns=list(self.dtypes)))
 
     def set_index(self, indices):
         """
@@ -1215,7 +1228,7 @@ class DataCollection:
 
         # Only update on common indices
         df.loc[update_df.index, update_df.columns] = update_df
-        df = self._set_dtypes(df)  # the replace method does not preserve dtypes
+        df = self._set_dtypes(data=df)  # the replace method does not preserve dtypes
 
         if inplace:
             self.df = df
@@ -1379,17 +1392,22 @@ class RecordCollection(DataCollection):
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
 
+        add_columns = add_df.columns.tolist()  # original columns of the add dataframe
+
+        print('add dataframe before conforming:')
+        print(add_df)
+
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
 
         # Drop columns that are not in the header
-        extra_cols = [i for i in add_df.columns if i not in df.columns]
+        extra_cols = [i for i in add_columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
         print('initial add dataframe for appending')
         print(add_df)
 
-        # Find shared entries between the collection and the new data to add
         if not df.empty:
+            # Find shared entries between the collection and the new data to add
             df.set_index(id_col, inplace=True)
             add_df.set_index(id_col, inplace=True)
 
@@ -1419,7 +1437,8 @@ class RecordCollection(DataCollection):
 
         # Add the "state" columns to the new data, if not set
         for state_field in state_fields:
-            if state_field not in new_df.columns:
+            if state_field not in add_columns:
+                print('setting state field {} to default {}'.format(state_field, state_fields[state_field]))
                 new_df.loc[:, state_field] = state_fields[state_field]  # default for the state
 
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
@@ -1427,12 +1446,16 @@ class RecordCollection(DataCollection):
 
         # Check for violations of uniqueness among column values
         unq_cols = [i for i in new_df.columns if self._get_attr(i, 'unique') is True]
+        print('columns {} have the unique attribute set'.format(unq_cols))
         for unq_col in unq_cols:
             new_vals = new_df[unq_col]
             dup_inds = new_vals[new_vals.isin(df[unq_col])].index
             print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
 
             new_df.drop(dup_inds, axis=0, inplace=True)
+
+        print('appending new data to the collection:')
+        print(new_df)
 
         # Add new data to the collection
         df = df.append(new_df, ignore_index=reindex)
@@ -1498,7 +1521,8 @@ class RecordCollection(DataCollection):
             indices = [indices]
 
         if deleted or (indices is not None and len(indices) > 0):  # must include deleted rows if indices provided
-            df = self.data(current=False)  # all rows, not just current
+            #df = self.data(current=False)  # all rows, not just current
+            df = self.data(deleted=None)  # all rows, not just current
         else:
             df = self.data()
 
@@ -1538,8 +1562,10 @@ class ReferenceCollection(DataCollection):
                        'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool', 'ReferenceWarnings': 'varchar',
                        'ReferenceNotes': 'varchar', self._deleted_column: 'bool', self._edited_column: 'bool',
                        self._added_column: 'bool'}
+        self._fields = ['RecordID', 'ReferenceID', 'RecordType', 'ReferenceType', 'ReferenceDate', 'IsApproved',
+                        'IsHardLink', 'IsChild', 'IsDeleted', 'ReferenceWarnings', 'ReferenceNotes']
 
-        self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
+        self.df = self._set_dtypes(data=pd.DataFrame(columns=list(self.dtypes)))
 
     def get_index(self, record_ids, combined: bool = False):
         """
@@ -1603,11 +1629,13 @@ class ReferenceCollection(DataCollection):
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
 
+        add_columns = add_df.columns.tolist()  # original columns of the add dataframe
+
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
 
         # Drop columns that are not in the header
-        extra_cols = [i for i in add_df.columns if i not in df.columns]
+        extra_cols = [i for i in add_columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
         print('initial add dataframe for appending')
         print(add_df)
@@ -1643,7 +1671,7 @@ class ReferenceCollection(DataCollection):
 
         # Add the "state" columns to the new data, if not set
         for state_field in state_fields:
-            if state_field not in new_df.columns:
+            if state_field not in add_columns:
                 new_df.loc[:, state_field] = state_fields[state_field]  # default for the state
 
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
@@ -1740,7 +1768,10 @@ class ReferenceCollection(DataCollection):
         else:
             state_filter = None
 
-        if state_filter is not None:
+        if (state_filter is not None) and (not df.empty):
+            print('subsetting collection data with state filter:')
+            print(state_filter)
+            print(df)
             df = df.query(state_filter)
 
         # Filter by selected fields, excluding state fields

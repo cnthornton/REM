@@ -540,8 +540,8 @@ class DataTable(RecordElement):
         self.index_map = {}
         self._colors = []
 
-    def _data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False,
-              deleted_rows: bool = False, added_rows: bool = False, indices=None):
+    def _data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = None,
+              deleted_rows: bool = False, added_rows: bool = None, indices=None):
         """
         Return the collection data.
 
@@ -550,11 +550,11 @@ class DataTable(RecordElement):
 
             display_rows (bool): return only the display rows [Default: False].
 
-            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+            edited_rows (bool): filter rows on their edited state [Default: None - don't filter on edited state].
 
-            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+            deleted_rows (bool): filter rows on their deleted state [Default: False - don't include deleted rows].
 
-            added_rows (bool): return only rows that have been added to the table [Default: False].
+            added_rows (bool): filter rows on their added state [Default: None - don't filter on added state].
 
             indices: list or series of table indices.
 
@@ -590,9 +590,11 @@ class DataTable(RecordElement):
                                           .format(NAME=self.name, COL=search_col))
                     logger.warning(msg)
         else:
-            current = (not all_rows) if indices is None or deleted_rows is False else False
-            df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
-                                 added_only=added_rows, indices=indices)
+            #current = (not all_rows) if indices is None or deleted_rows is False else False
+            #df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
+            #                     added_only=added_rows, indices=indices)
+            deleted = None if all_rows else deleted_rows
+            df = collection.data(edited=edited_rows, deleted=deleted, added=added_rows, indices=indices)
 
         return df
 
@@ -1205,8 +1207,8 @@ class DataTable(RecordElement):
             for action_bttn in actions:
                 action_bttn.bind_keys(window, elem_key)
 
-    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False,
-             deleted_rows: bool = False, added_rows: bool = False, indices=None):
+    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = None,
+             deleted_rows: bool = False, added_rows: bool = None, indices=None):
         """
         Return the collection data.
 
@@ -1215,11 +1217,11 @@ class DataTable(RecordElement):
 
             display_rows (bool): return only the display rows [Default: False].
 
-            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+            edited_rows (bool): filter rows on edited state [Default: None - don't filter on edited state].
 
-            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+            deleted_rows (bool): filter rows on deleted state [Default: False - don't include deleted rows].
 
-            added_rows (bool): return only rows that have been added to the table [Default: False].
+            added_rows (bool): filter rows on added state [Default: None - don't filter on added state].
 
             indices: list or series of table indices.
 
@@ -2065,7 +2067,8 @@ class DataTable(RecordElement):
         else:
             edit_columns = None
 
-        df = self.collection.data(current=False)
+        #df = self.collection.data(current=False)
+        df = self.collection.data(deleted=None)  # all rows
 
         try:
             row = df.loc[index]
@@ -2099,7 +2102,8 @@ class DataTable(RecordElement):
         import_table = DataTable(self.name, table_layout)
 
         if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)
+            #import_df = collection.data(current=False, deleted_only=True)
+            import_df = collection.data(deleted=True)  # only include deleted rows
 
         import_table.append(import_df, reindex=False)
 
@@ -2398,7 +2402,8 @@ class RecordTable(DataTable):
             savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         collection = self.collection
-        df = collection.data(current=False)
+        #df = collection.data(current=False)
+        df = collection.data(deleted=None)
         modifiers = self.modifiers
 
         level = level if level is not None else self.level + 1
@@ -2448,7 +2453,8 @@ class RecordTable(DataTable):
         columns = collection.dtypes
 
         if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)
+            #import_df = collection.data(current=False, deleted_only=True)
+            import_df = collection.data(deleted=True)
 
         logger.debug(self.format_log('importing rows'))
 
@@ -2566,8 +2572,9 @@ class ComponentTable(RecordTable):
         id_col = collection.id_column
         columns = collection.dtypes
 
-        if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)
+        if import_df is None:  # start with deleted rows
+            #import_df = collection.data(current=False, deleted_only=True)
+            import_df = collection.data(deleted=True)
         current_ids = collection.row_ids()
 
         logger.debug(self.format_log('importing rows'))
@@ -2771,8 +2778,8 @@ class ReferenceTable(RecordTable):
 
         return ref_df
 
-    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False,
-             deleted_rows: bool = False, added_rows: bool = False, indices=None):
+    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = None,
+             deleted_rows: bool = False, added_rows: bool = None, indices=None):
         """
         Return the collection data.
 
@@ -2781,11 +2788,11 @@ class ReferenceTable(RecordTable):
 
             display_rows (bool): return only the display rows [Default: False].
 
-            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+            edited_rows (bool): filter rows on edited state [Default: None - don't filter on edited state].
 
-            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+            deleted_rows (bool): filter rows on deleted state [Default: False - don't include deleted rows].
 
-            added_rows (bool): return only rows that have been added to the table [Default: False].
+            added_rows (bool): filter rows on added state [Default: None - don't filter on added state].
 
             indices: list or series of table indices.
 
@@ -2854,7 +2861,8 @@ class ReferenceTable(RecordTable):
         columns = collection.dtypes
 
         if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)
+            #import_df = collection.data(current=False, deleted_only=True)
+            import_df = collection.data(deleted=True)
         current_ids = collection.row_ids()
 
         logger.debug(self.format_log('importing rows'))
@@ -3096,7 +3104,8 @@ class DataList(RecordElement):
             msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
             raise AttributeError(msg)
 
-        self.columns = columns = list(self.collection.dtypes)
+        #self.columns = columns = list(self.collection.dtypes)
+        self.columns = columns = self.collection.list_fields()
 
         # Actions that allow modification of the list, such as importing deleted entries
         try:
@@ -3320,19 +3329,19 @@ class DataList(RecordElement):
 
         return entry_event, index
 
-    def data(self, all_rows: bool = False, edited_rows: bool = False, deleted_rows: bool = False,
-             added_rows: bool = False, indices=None):
+    def data(self, all_rows: bool = False, edited_rows: bool = None, deleted_rows: bool = False,
+             added_rows: bool = None, indices=None):
         """
         Return the collection data.
 
         Arguments:
             all_rows (bool): return all table rows, including the deleted rows [Default: False].
 
-            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+            edited_rows (bool): filter rows on edited state [Default: None - don't filter on edited state].
 
-            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+            deleted_rows (bool): filter rows on deleted state [Default: False - don't include deleted rows].
 
-            added_rows (bool): return only rows that have been added to the table [Default: False].
+            added_rows (bool): filter rows on added state [Default: None - don't filter on added state].
 
             indices: list or series of entry indices.
 
@@ -3341,9 +3350,11 @@ class DataList(RecordElement):
         """
         collection = self.collection
 
-        current = (not all_rows) if indices is None or deleted_rows is False else False
-        df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
-                             added_only=added_rows, indices=indices)
+        #current = (not all_rows) if indices is None or deleted_rows is False else False
+        #df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
+        #                     added_only=added_rows, indices=indices)
+        deleted = None if all_rows else deleted_rows
+        df = collection.data(edited=edited_rows, deleted=deleted, added=added_rows, indices=indices)
 
         return df
 
@@ -3563,7 +3574,8 @@ class DataList(RecordElement):
                                      font=menu_font, button_color=(text_color, header_color), border_width=0)
 
         # Entry list container layout
-        df = collection.data(current=False)
+        #df = collection.data(current=False)
+        df = collection.data(deleted=None)  # all entries
         annotations = self.annotate_display(df)
 
         n_entry = 0
@@ -3865,7 +3877,8 @@ class DataList(RecordElement):
         entry_container = window[self.key_lookup('Element')]
 
         # Create or update index entries
-        df = collection.data(current=False)
+        #df = collection.data(current=False)
+        df = collection.data(deleted=None)
         annotations = self.annotate_display(df)
 
         n_entry = 0
@@ -4011,7 +4024,8 @@ class DataList(RecordElement):
         import_table = DataTable(self.name, table_layout)
 
         if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)
+            #import_df = collection.data(current=False, deleted_only=True)
+            import_df = collection.data(deleted=True)
 
         import_table.append(import_df, reindex=False)
 
@@ -4083,13 +4097,21 @@ class ReferenceList(DataList):
         self.etype = 'reference'
 
         try:
+            self.collection = mod_col.ReferenceCollection(name, entry)
+        except Exception as e:
+            msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
+            raise AttributeError(msg)
+
+        self.columns = columns = self.collection.list_fields()
+
+        try:
             type_field = entry['TypeField']
         except KeyError:
             msg = self.format_log('missing required parameter "TypeField"')
             logger.warning(msg)
             self._type_field = None
         else:
-            if type_field in self.columns:
+            if type_field in columns:
                 self._type_field = type_field
             else:
                 msg = self.format_log('type field "{FIELD}" not found in the set of collection fields'
@@ -4103,7 +4125,7 @@ class ReferenceList(DataList):
             logger.warning(msg)
             self._ref_type_field = None
         else:
-            if ref_type_field in self.columns:
+            if ref_type_field in columns:
                 self._ref_type_field = ref_type_field
             else:
                 msg = self.format_log('reference type field "{FIELD}" not found in the set of collection fields'

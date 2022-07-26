@@ -2500,7 +2500,6 @@ class DatabaseRecord:
         record_elements = self.components
         for record_element in record_elements:
             elem_values = record_element.export_values(edited_only=edited_only)
-            print('record element {} has values: {}'.format(record_element.name, elem_values))
             values = {**values, **elem_values}
 
         return pd.Series(values)
@@ -2709,12 +2708,12 @@ class DatabaseRecord:
             else:  # export only the added or edited reference entries
                 logger.debug('Record {ID}: preparing export statements for edited or new "{ASSOC}" references'
                              .format(ID=record_id, ASSOC=association_rule))
-                ref_data = refbox.data(edited_rows=True)
+                ref_data = refbox.data(edited_rows=True, added_rows=True)  # edited or added
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
                          .format(ID=record_id, ASSOC=association_rule))
-            deleted_df = refbox.data(deleted_rows=True, added_rows=False)  # deleted but not added
+            deleted_df = refbox.data(deleted_rows=True, added_rows=False)  # existing deleted only
             if not deleted_df.empty:
                 statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
@@ -2737,9 +2736,9 @@ class DatabaseRecord:
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
                              'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
                 ref_data = comp_table.export_references(record_id, edited_only=True)
-                exist_df = comp_table.data(edited_rows=True)
+                exist_df = comp_table.data(edited_rows=True, added_rows=True)
 
-            deleted_df = comp_table.data(all_rows=True, deleted_rows=True)
+            deleted_df = comp_table.data(deleted_rows=True, added_rows=False)  # existing deleted only
 
             if deleted_df.empty and exist_df.empty:
                 logger.debug('Record {ID}: no components in component table {COMP} available to export'
