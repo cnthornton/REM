@@ -150,7 +150,7 @@ class InputParameter:
             self.value = self._format_value(self.default)
         except Exception as e:
             msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
-            logger.debug('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             self.value = None
             self.default = None
@@ -951,8 +951,6 @@ class InputParameterDate(InputParameterStandard):
         except (KeyError, ValueError):
             self.localize = False
 
-        self._format = '%Y/%m/%d'
-
     def _format_value(self, value):
         """
         Format the provided value according to the parameter's data type.
@@ -966,8 +964,10 @@ class InputParameterDate(InputParameterStandard):
         if value == '' or pd.isna(value):
             return None
 
+        input_date_format = settings.input_date_format
+
         try:
-            new_value = pd.to_datetime(value, format=self._format, utc=False).to_pydatetime()
+            new_value = pd.to_datetime(value, format=input_date_format, utc=False).to_pydatetime()
         except ValueError:
             logger.warning('InputParameter {NAME}: failed to format input value {VAL} as a datetime object'
                            .format(NAME=self.name, VAL=value))
@@ -1004,7 +1004,7 @@ class InputParameterDate(InputParameterStandard):
                 display_value = format_display_date(raw_value, sep='/')
             else:
                 raw_value = new_value
-                display_value = new_date.strftime(self._format)
+                display_value = new_date.strftime(settings.input_date_format)
         elif input_len < 8:
             current_len = len(raw_value)
             if current_len > input_len:  # user deleted a character
@@ -1050,6 +1050,7 @@ class InputParameterDate(InputParameterStandard):
         Create the type-specific layout for the value element of the parameter.
         """
         disabled = False if self.editable is True else True
+        input_date_format = settings.input_date_format
 
         # Element settings
         font = mod_const.LARGE_FONT
@@ -1060,7 +1061,7 @@ class InputParameterDate(InputParameterStandard):
 
         # Parameter settings
         default_value = self.default
-        default_display = '' if pd.isna(default_value) else self.value.strftime(self._format)
+        default_display = '' if pd.isna(default_value) else self.value.strftime(input_date_format)
         display_value = self._enforce_formatting(default_display)
         if display_value == '':
             display_value = self.placeholder
@@ -1077,7 +1078,7 @@ class InputParameterDate(InputParameterStandard):
         calendar_key = self.key_lookup('Calendar')
         frame_key = self.key_lookup('Container')
         date_ico = mod_const.CALENDAR_ICON
-        layout = sg.Frame('', [[sg.CalendarButton('', target=elem_key, key=calendar_key, format=self._format,
+        layout = sg.Frame('', [[sg.CalendarButton('', target=elem_key, key=calendar_key, format=input_date_format,
                                                   image_data=date_ico, font=font, pad=(pad_el, 0),
                                                   button_color=(text_col, bg_col),
                                                   border_width=0, disabled=disabled),
@@ -1097,7 +1098,7 @@ class InputParameterDate(InputParameterStandard):
         if not self.has_value():
             return ''
 
-        display_value = self.value.strftime(self._format)
+        display_value = self.value.strftime(settings.input_date_format)
 
         return display_value
 
@@ -1519,7 +1520,7 @@ class InputParameterRange(InputParameterComp):
 
         try:
             in1, in2 = value
-        except ValueError:
+        except (ValueError, TypeError):
             in1 = in2 = value
 
         try:

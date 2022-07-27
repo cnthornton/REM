@@ -550,6 +550,8 @@ class SettingsManager:
 
         self.default_pgroup = 'admin'  # default permissions group when not configured
 
+        self.input_date_format = '%Y/%m/%d'
+
     def translate(self):
         """
         Translate text using language defined in settings.

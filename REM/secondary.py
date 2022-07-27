@@ -2232,7 +2232,8 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
     """
     Display window for obtaining values for a ranged parameter.
     """
-    value_range = current if current and len(current) == 2 else [None, None]
+    value_range = list(current) if (isinstance(current, tuple) or isinstance(current, list)) and len(current) == 2 \
+        else [None, None]
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
