@@ -872,12 +872,6 @@ class BankRule:
             acct = self.fetch_account(acct_panel, by_key=True)
             acct.update_display(window)
 
-    def selected_rows(self):
-        """
-        Get the
-        """
-        pass
-
     def link_selected(self):
         """
         Manually link two or more selected records.
@@ -933,13 +927,17 @@ class BankRule:
         user_note = mod_win2.add_note_window()
 
         # Manually set a mutual references for the selected records
-        refdate = datetime.datetime.now()
+        record_type = acct.record_type
+        ref_type = assoc_acct.record_type
+        record_fields = ['RecordID', 'ReferenceID', 'RecordType', 'ReferenceType', 'IsApproved', 'ReferenceNotes']
+        ref_fields = ['ReferenceID', 'RecordID', 'ReferenceType', 'RecordType', 'IsApproved', 'ReferenceNotes']
+
         for record_id in record_ids:
             for reference_id in reference_ids:
-                acct.add_reference(record_id, reference_id, assoc_acct.record_type, approved=True, note=user_note,
-                                   refdate=refdate)
-                assoc_acct.add_reference(reference_id, record_id, acct.record_type, approved=True, note=user_note,
-                                         refdate=refdate)
+                ref_data = [record_id, reference_id, record_type, ref_type, True, user_note]
+
+                acct.add_reference(pd.Series(ref_data, index=record_fields))
+                assoc_acct.add_reference(pd.Series(ref_data, index=ref_fields))
 
         return success
 
@@ -1062,24 +1060,32 @@ class BankRule:
             logger.error(msg)
             matches = pd.DataFrame()
 
-        for record_id, row in matches.iterrows():
-            refdate = datetime.datetime.now()
-            ref_id = row['ReferenceID']
-            assoc_acct_name = row['Source']
-            approved = row['Approved']
-            warning = row['Warning']
+        matches['RecordID'] = matches.index
 
+        assoc_accounts = matches['Source'].unique()
+        for assoc_acct_name in assoc_accounts:
             assoc_acct = self.fetch_account(assoc_acct_name)
+
+            match_sub = matches[matches['Source'] == assoc_acct_name]
             ref_type = assoc_acct.record_type
+            match_sub['ReferenceType'] = ref_type
+            match_sub['RecordType'] = acct_type
+
+            print('matches for association source {}'.format(assoc_acct_name))
+            print(match_sub)
+            print(match_sub.dtypes)
 
             # Insert the reference into the account records reference dataframe
-            acct.add_reference(record_id, ref_id, ref_type, approved=approved, refdate=refdate, warning=warning)
+            record_map = {'Approved': 'IsApproved', 'Warning': 'ReferenceWarnings', 'Notes': 'ReferenceNotes'}
+            acct.add_reference(match_sub, mapping=record_map)
 
             # Insert the reference into the associated account's reference dataframe
-            assoc_acct.add_reference(ref_id, record_id, acct_type, approved=approved, refdate=refdate, warning=warning)
+            ref_map = {'RecordID': 'ReferenceID', 'ReferenceID': 'RecordID', 'RecordType': 'ReferenceType',
+                       'ReferenceType': 'RecordType', 'Approved': 'IsApproved', 'Warning': 'ReferenceWarnings',
+                       'Notes': 'ReferenceNotes'}
+            assoc_acct.add_reference(match_sub, mapping=ref_map)
 
-            associations.append((record_id, ref_id))
-
+        associations.extend(list(matches[['RecordID', 'ReferenceID']].itertuples(index=False, name=None)))
         nfound = matches.shape[0]
 
         if search_expanded:
@@ -1101,25 +1107,28 @@ class BankRule:
                 logger.error(msg)
                 matches = pd.DataFrame()
 
-            for record_id, row in matches.iterrows():
-                refdate = datetime.datetime.now()
-                ref_id = row['ReferenceID']
-                assoc_acct_name = row['Source']
-                approved = row['Approved']
-                warning = row['Warning']
+            matches['RecordID'] = matches.index
 
+            assoc_accounts = matches['Source'].unique()
+            for assoc_acct_name in assoc_accounts:
                 assoc_acct = self.fetch_account(assoc_acct_name)
+
+                match_sub = matches[matches['Source'] == assoc_acct_name]
                 ref_type = assoc_acct.record_type
+                match_sub['ReferenceType'] = ref_type
+                match_sub['RecordType'] = acct_type
 
                 # Insert the reference into the account records reference dataframe
-                acct.add_reference(record_id, ref_id, ref_type, approved=approved, refdate=refdate, warning=warning)
+                record_map = {'Approved': 'IsApproved', 'Warning': 'ReferenceWarnings', 'Notes': 'ReferenceNotes'}
+                acct.add_reference(match_sub, mapping=record_map)
 
                 # Insert the reference into the associated account's reference dataframe
-                assoc_acct.add_reference(ref_id, record_id, acct_type, approved=approved, refdate=refdate,
-                                         warning=warning)
+                ref_map = {'RecordID': 'ReferenceID', 'ReferenceID': 'RecordID', 'RecordType': 'ReferenceType',
+                           'ReferenceType': 'RecordType', 'Approved': 'IsApproved', 'Warning': 'ReferenceWarnings',
+                           'Notes': 'ReferenceNotes'}
+                assoc_acct.add_reference(match_sub, mapping=ref_map)
 
-                associations.append((record_id, ref_id))
-
+            associations.extend(list(matches[['RecordID', 'ReferenceID']].itertuples(index=False, name=None)))
             nfound += matches.shape[0]
 
         logger.info('BankRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
@@ -1752,12 +1761,15 @@ class BankAccount:
                         print('approved records have reference indices: {}'.format(reference_indices))
 
                 # Add self references to the records without a current association
-                records_wo_refs = [i for i in record_ids if i not in records_w_refs]
+                records_wo_refs = [i for i in record_ids if i not in records_w_refs.tolist()]
                 print('approved records without current associations:')
                 print(records_wo_refs)
                 for record_id in records_wo_refs:
                     print('adding self reference for record {}'.format(record_id))
-                    self.add_reference(record_id, record_id, self.record_type, approved=True)
+                    #self.add_reference(record_id, record_id, self.record_type, approved=True)
+                    ref_data = pd.Series([record_id, record_id, self.record_type, self.record_type, True],
+                                         index=['RecordID', 'ReferenceID', 'RecordType', 'ReferenceType', 'IsApproved'])
+                    self.add_reference(ref_data)
 
                 # Deselect selected rows
                 table.deselect(window)
@@ -1977,7 +1989,14 @@ class BankAccount:
             diff_df = ref_df.loc[ref_df.compare(df).index]
 
             # Update reference entries to match the source entries
-            indices = references.get_index(diff_df.index.tolist(), combined=True)
+            pair_indices = diff_df.index.tolist()
+            print('getting indices of reference pairs:')
+            print(pair_indices)
+            indices = references.get_index(pair_indices, combined=True)
+            print('updating references of account {} with data:'.format(self.name))
+            print(diff_df)
+            print('resetting update data with indices: {}'.format(indices))
+
             diff_df = diff_df.reset_index().set_index(pd.Index(indices))
             references.update(diff_df)
 
@@ -2025,20 +2044,31 @@ class BankAccount:
 
         return indices
 
-    def add_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None,
-                      note: str = None, refdate: datetime.datetime = None):
+    def add_reference(self, data, mapping: dict = None):
         """
         Add a record reference to the references dataframe.
         """
-        ref_cols = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'ReferenceNotes',
-                    'ReferenceWarnings', 'IsApproved', 'IsHardLink', 'IsChild', 'IsDeleted']
-        refdate = refdate if refdate is not None else datetime.datetime.now()
+        if isinstance(data, pd.DataFrame):
+            df = data.copy()
+        elif isinstance(data, pd.Series):
+            df = data.to_frame().T
+        elif isinstance(data, dict):
+            df = pd.DataFrame(data)
+        else:
+            raise TypeError('incorrect data type provided')
 
-        ref_values = pd.Series([record_id, reference_id, refdate, self.record_type, reftype, note,
-                                warning, approved, False, False, False], index=ref_cols)
-        print('appending new reference:')
-        print(ref_values)
-        self.references.append(ref_values, new=True)
+        if isinstance(mapping, dict):
+            colmap = {i: j for i, j in mapping.items() if i in df.columns}
+            print('mapping columns with mapper:')
+            print(colmap)
+            df.rename(columns=colmap, inplace=True, errors='raise')
+
+        refdate = datetime.datetime.now()
+        df['ReferenceDate'] = refdate
+
+        print('appending new reference to account {}:'.format(self.name))
+        print(df)
+        self.references.append(df, new=True)
 
     def has_reference(self, record_ids):
         """
@@ -2054,13 +2084,6 @@ class BankAccount:
             record_ids = record_ids.tolist()
 
         has_df = ref_df.loc[ref_df['RecordID'].isin(record_ids), ['RecordID', 'ReferenceID']].dropna()
-        #references = ref_df.loc[ref_df['RecordID'].isin(record_ids)]
-        #if references.empty:
-        #    return False
-        #elif references['ReferenceID'].isna().any():
-        #    return False
-        #else:
-        #    return True
 
         return has_df['RecordID']
 

@@ -663,7 +663,6 @@ class DataCollection:
             state_filter = None
 
         if (state_filter is not None) and (not df.empty):
-            print('subsetting collection data with state filter: {}'.format(state_filter))
             df = df.query(state_filter)
 
         # Filter by selected fields, excluding state fields
@@ -707,10 +706,7 @@ class DataCollection:
         # Add the "state" columns to the new data, if not set
         for state_field in state_fields:
             if state_field not in add_df.columns:
-                print('adding default for state field {}'.format(state_field))
                 add_df.loc[:, state_field] = state_fields[state_field]  # default for the state
-            else:
-                print('using existing state values for state field {}'.format(state_field))
 
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
@@ -724,7 +720,6 @@ class DataCollection:
         for unq_col in unq_cols:
             add_vals = add_df[unq_col]
             dup_inds = add_vals[add_vals.isin(df[unq_col])].index
-            print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
 
             add_df.drop(dup_inds, axis=0, inplace=True)
 
@@ -1394,17 +1389,12 @@ class RecordCollection(DataCollection):
 
         add_columns = add_df.columns.tolist()  # original columns of the add dataframe
 
-        print('add dataframe before conforming:')
-        print(add_df)
-
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
 
         # Drop columns that are not in the header
         extra_cols = [i for i in add_columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
-        print('initial add dataframe for appending')
-        print(add_df)
 
         if not df.empty:
             # Find shared entries between the collection and the new data to add
@@ -1438,7 +1428,6 @@ class RecordCollection(DataCollection):
         # Add the "state" columns to the new data, if not set
         for state_field in state_fields:
             if state_field not in add_columns:
-                print('setting state field {} to default {}'.format(state_field, state_fields[state_field]))
                 new_df.loc[:, state_field] = state_fields[state_field]  # default for the state
 
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
@@ -1446,16 +1435,11 @@ class RecordCollection(DataCollection):
 
         # Check for violations of uniqueness among column values
         unq_cols = [i for i in new_df.columns if self._get_attr(i, 'unique') is True]
-        print('columns {} have the unique attribute set'.format(unq_cols))
         for unq_col in unq_cols:
             new_vals = new_df[unq_col]
             dup_inds = new_vals[new_vals.isin(df[unq_col])].index
-            print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
 
             new_df.drop(dup_inds, axis=0, inplace=True)
-
-        print('appending new data to the collection:')
-        print(new_df)
 
         # Add new data to the collection
         df = df.append(new_df, ignore_index=reindex)
@@ -1637,8 +1621,6 @@ class ReferenceCollection(DataCollection):
         # Drop columns that are not in the header
         extra_cols = [i for i in add_columns if i not in df.columns]
         add_df.drop(extra_cols, axis=1, inplace=True)
-        print('initial add dataframe for appending')
-        print(add_df)
 
         # Find shared entries between the collection and the new data to add
         if not df.empty:
@@ -1682,7 +1664,6 @@ class ReferenceCollection(DataCollection):
         for unq_col in unq_cols:
             new_vals = new_df[unq_col]
             dup_inds = new_vals[new_vals.isin(df[unq_col])].index
-            print('indices at {} in the add dataframe violate the uniqueness conditions of field {}'.format(dup_inds, unq_col))
 
             new_df.drop(dup_inds, axis=0, inplace=True)
 
@@ -1769,9 +1750,6 @@ class ReferenceCollection(DataCollection):
             state_filter = None
 
         if (state_filter is not None) and (not df.empty):
-            print('subsetting collection data with state filter:')
-            print(state_filter)
-            print(df)
             df = df.query(state_filter)
 
         # Filter by selected fields, excluding state fields

@@ -403,7 +403,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                 else:
                     if edit_mode:  # element is being edited
                         # Attempt to save the data element value
-                        success = record_element.run_event(window, record_element.key_lookup('Save'), values)
+                        success = record_element.run_event(window, 'Save', values)
                         if not success:
                             elements_updated = False
 
@@ -431,7 +431,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                 else:
                     if edit_mode:  # element is being edited
                         # Attempt to save the data element value
-                        success = record_element.run_event(window, record_element.key_lookup('Save'), values)
+                        success = record_element.run_event(window, 'Save', values)
                         if not success:
                             elements_updated = False
 

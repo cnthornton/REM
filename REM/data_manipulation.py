@@ -224,9 +224,6 @@ def evaluate_condition(data, expression):
     else:
         raise ValueError('expression {} must be provided as either a string or list'.format(expression))
 
-    #expression = ' '.join([i if (i in header or is_numeric(i) or i in reserved_chars) else '"{}"'.format(i) for i in
-    #                       components])
-
     if len(components) > 1:
         # Quote non-numeric, static expression variables
         exp_comps = []
@@ -250,8 +247,6 @@ def evaluate_condition(data, expression):
             exp_comps.append(exp_comp)
 
         expression = ' '.join(exp_comps)
-        print(expression)
-        print(df.index)
         try:
             df_match = df.eval(expression)
         except ValueError:
