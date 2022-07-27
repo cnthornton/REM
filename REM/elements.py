@@ -3741,14 +3741,6 @@ class DataList(RecordElement):
         row1.append(sg.Text(header, key=header_key, enable_events=True, font=font,
                             text_color=select_text_color, background_color=bg_color))
 
-        # Warning icon
-        warning_text = '' if pd.isna(warning) else warning
-        warnings_key = entry_elements['Warnings']
-        warnings_icon = mod_const.WARNING_FLAG_ICON
-        warning_visible = True if warning_text else False
-        row1.append(sg.Image(data=warnings_icon, key=warnings_key, size=flag_size, pad=((pad_el, 0), 0),
-                             visible=warning_visible, background_color=bg_color, tooltip=warning_text))
-
         # Entry details
         for i, column in enumerate(display_cols):
             col_alias = display_cols[column]
