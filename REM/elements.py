@@ -1628,11 +1628,10 @@ class DataTable(RecordElement):
 
             filter_rows.append(current_row)
 
+        filter_bttn = mod_lo.filter_button(key=self.key_lookup('Filter'), disabled=False,
+                                           tooltip='Filter table rows ({})'.format(filter_shortcut))
         filter_rows.append([sg.Col([[sg.VPush(background_color=frame_col)],
-                                    [sg.Button('Apply', key=self.key_lookup('Filter'), disabled=False,
-                                               size=(mod_const.B2_WIDTH, 1), button_color=(alt_col, border_col),
-                                               disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                               tooltip='Apply table filters ({})'.format(filter_shortcut))],
+                                    [filter_bttn],
                                     [sg.VPush(background_color=frame_col)]],
                                    background_color=frame_col, expand_y=True, vertical_alignment='c',
                                    element_justification='l')])
@@ -1653,8 +1652,6 @@ class DataTable(RecordElement):
         row1 = [
             sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=border_col),
                      sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=border_col),
-                     sg.Text('Filter', pad=((0, pad_h), 0), text_color=select_text_col,
-                             background_color=border_col),
                      sg.Button('', image_data=mod_const.EXPAND_ICON, key=self.key_lookup('CollapseBttn'),
                                button_color=(text_col, border_col), border_width=0,
                                tooltip='Collapse filter panel')]],

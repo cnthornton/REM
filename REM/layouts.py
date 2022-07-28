@@ -219,6 +219,26 @@ def parameter_button(key: str = None, **kwargs):
     return layout
 
 
+def filter_button(key: str = None, **kwargs):
+    """
+    Parameter button layout.
+    """
+    text_color = mod_const.DEFAULT_TEXT_COLOR
+    disabled_text_color = mod_const.DISABLED_TEXT_COLOR
+    bg_color = mod_const.BORDER_COLOR
+    disabled_bg_color = mod_const.BORDER_COLOR
+    highlight_color = mod_const.BUTTON_HOVER_COLOR
+    size = mod_const.BTTN_SIZE
+    icon = mod_const.BTTN_FILTER_ICON
+
+    bttn_key = '-FILTER-' if not isinstance(key, str) else key
+    layout = sg.Button('', key=bttn_key, image_data=icon, image_size=size, button_color=(text_color, bg_color),
+                       disabled_button_color=(disabled_text_color, disabled_bg_color),
+                       mouseover_colors=(text_color, highlight_color), border_width=1, use_ttk_buttons=False, **kwargs)
+
+    return layout
+
+
 def nav_bttn(*args, **kwargs):
     """
     Navigation button layout.
