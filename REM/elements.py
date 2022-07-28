@@ -1629,8 +1629,8 @@ class DataTable(RecordElement):
             filter_rows.append(current_row)
 
         filter_rows.append([sg.Col([[sg.VPush(background_color=frame_col)],
-                                    [mod_lo.B2('Apply', key=self.key_lookup('Filter'), disabled=False,
-                                               button_color=(alt_col, border_col),
+                                    [sg.Button('Apply', key=self.key_lookup('Filter'), disabled=False,
+                                               size=(mod_const.B2_WIDTH, 1), button_color=(alt_col, border_col),
                                                disabled_button_color=(disabled_text_col, disabled_bg_col),
                                                tooltip='Apply table filters ({})'.format(filter_shortcut))],
                                     [sg.VPush(background_color=frame_col)]],

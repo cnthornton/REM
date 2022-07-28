@@ -953,6 +953,9 @@ class InputParameterDate(InputParameterStandard):
         except (KeyError, ValueError):
             self.localize = False
 
+        if not self.placeholder:
+            self.placeholder = 'yyyy/mm/dd'
+
         try:
             self.value = self._format_value(self.default)
         except Exception as e:
@@ -1171,6 +1174,153 @@ class InputParameterDate(InputParameterStandard):
             has_value = False
 
         return has_value
+
+
+class InputParameterSearch(InputParameter):
+    """
+    For selection input.
+
+    Attributes:
+        value: value of the parameter's data storage elements.
+    """
+
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+
+        # Enforce supported data types for the parameter
+        supported_dtypes = settings.supported_str_dtypes + settings.supported_cat_dtypes
+        if not self.dtype or self.dtype not in supported_dtypes:
+            msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
+                  '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'varchar'
+
+        # Additional bindings and events
+        search_key = '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Search')
+        self.elements['Search'] = search_key
+        self.bindings[search_key] = 'Search'
+
+        if not self.placeholder:
+            self.placeholder = 'Search...'
+
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        update_event = False
+        if param_event == 'In' and not self.disabled:
+            self._set_state(window, state='focus')
+        elif param_event == 'Out' and not self.disabled:
+            self._set_state(window, state='inactive')
+        elif param_event == 'Element':
+            update_event = True
+
+        return update_event
+
+    def element_layout(self):
+        """
+        Create the type-specific layout for the value element of the parameter.
+        """
+        disabled = False if self.editable is True else True
+
+        # Element settings
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
+        disabled_bg_col = mod_const.DISABLED_BG_COLOR
+        border_color = mod_const.BORDER_COLOR
+        #pad_el = mod_const.ELEM_PAD * 2
+
+        # Parameter settings
+        display_value = self.format_display()
+        if display_value == '':
+            display_value = self.placeholder
+            text_col = mod_const.DISABLED_TEXT_COLOR
+        else:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+
+        # Parameter element size
+        size = mod_const.FIELD_SIZE
+        border = (1, 1)
+
+        # Layout
+        elem_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Container')
+        search_key = self.key_lookup('Search')
+        search_icon = mod_const.SEARCH_ICON
+        layout = sg.Frame('', [[sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled,
+                                         border_width=0, font=font, background_color=bg_col,
+                                         text_color=text_col, disabled_readonly_text_color=disabled_text_col,
+                                         disabled_readonly_background_color=disabled_bg_col,
+                                         use_readonly_for_disable=True, expand_x=True),
+                                sg.Button('', key=search_key, image_data=search_icon, disabled=disabled,
+                                          button_color=(text_col, border_color), border_width=0, expand_y=True)]],
+                          key=frame_key, size=size, pad=border, background_color=bg_col, vertical_alignment='c')
+
+        return layout
+
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        if self.has_value():
+            query_value = '%{VAL}%'.format(VAL=self.value)
+            statement = ('{COL} LIKE ?'.format(COL=column), (query_value,))
+        else:
+            statement = None
+
+        return statement
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        if not self.has_value():  # don't filter when value not set
+            return df
+
+        if df.empty:
+            return df
+
+        param_value = self.value
+        dtype = self.dtype
+        column = self.name
+
+        try:
+            if dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            else:
+                col_values = df[column].astype(np.object_, errors='raise')
+        except Exception as e:
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                             .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        logger.debug('InputParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+
+        df = df[col_values.str.contains(param_value, case=False, regex=True)]
+
+        return df
 
 
 class InputParameterCombo(InputParameter):

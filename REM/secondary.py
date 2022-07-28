@@ -1978,6 +1978,7 @@ def import_window(table, params: list = None):
     bttn_bg_col = mod_const.BUTTON_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     header_col = mod_const.HEADER_COLOR
+    border_color = mod_const.BORDER_COLOR
 
     tbl_pad = pad_frame * 2  # padding on both sides of the table
 
@@ -1994,9 +1995,11 @@ def import_window(table, params: list = None):
         param_layout += element_layout
 
     if len(param_layout) > 0:
-        param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True, use_ttk_buttons=True,
-                                      button_color=(bttn_text_col, bttn_bg_col), disabled=(not enable_search)))
-        top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col, vertical_alignment='b')],
+        search_key = '-FIND-'
+        search_bttn = sg.vbottom(mod_lo.search_button(key=search_key, disabled=(not enable_search)))
+        param_layout.append(search_bttn)
+
+        top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col, vertical_alignment='c')],
                       [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COLOR)]]
     else:
         top_layout = [[]]

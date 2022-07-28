@@ -712,6 +712,7 @@ class BankRule:
         db_size = (max([len(i) for i in settings.alt_dbs]), 1)
         param_size = (max([len(i) for i in entries]), 1)
 
+        param_bttn = mod_lo.parameter_button(key=param_key, disabled=True, tooltip='Select reconciliation parameters')
         header1 = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
                            sg.Col([[sg.Combo(entries, default_value='', key=entry_key, size=param_size,
                                              pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
@@ -721,9 +722,10 @@ class BankRule:
                            sg.Col([[sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
                                              pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
                                              background_color=bg_col, enable_events=True, tooltip='Record database'),
-                                    sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
-                                              image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
-                                              tooltip='Parameter selection')
+                                    param_bttn
+                                    #sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
+                                    #          image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
+                                    #          tooltip='Parameter selection')
                                     ]],
                                   element_justification='r', background_color=bg_col)
                            ]],

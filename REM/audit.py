@@ -354,7 +354,7 @@ class AuditRule:
 
         # Start button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
-        elif rule_event == 'Start' and not window[start_key].metadata['disabled']:
+        elif rule_event == 'Start':
             # Get the parameter settings
             param_def = {self.menu_title: self._param_def}
             section_params = mod_win2.parameter_window(param_def, title=self.menu_title)
@@ -364,7 +364,6 @@ class AuditRule:
                 params = section_params[self.menu_title]
 
                 window[start_key].update(disabled=True)
-                window[start_key].metadata['disabled'] = True
 
                 # Verify that the audit has not already been performed with these parameters
                 audit_exists = self.load_record(params)
@@ -588,13 +587,15 @@ class AuditRule:
         # Panel header
         param_key = self.key_lookup('Start')
         header_key = self.key_lookup('Header')
+        param_bttn = mod_lo.parameter_button(key=param_key, disabled=False, tooltip='Select audit parameters')
         header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
                                  sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
                                           pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
                                           background_color=bg_col, enable_events=True, tooltip='Record database'),
-                                 sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
-                                           image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
-                                           metadata={'disabled': False}, tooltip='Parameter selection')
+                                 param_bttn
+                                 #sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
+                                 #          image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
+                                 #          metadata={'disabled': False}, tooltip='Parameter selection')
                                  ]],
                                key=header_key, background_color=bg_col, expand_x=True)
 
@@ -691,7 +692,6 @@ class AuditRule:
         # Reset "action" elements to default
         start_key = self.key_lookup('Start')
         window[start_key].update(disabled=False)
-        window[start_key].metadata['disabled'] = False
 
         save_key = self.key_lookup('Save')
         window[save_key].update(disabled=True)

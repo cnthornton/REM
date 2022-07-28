@@ -179,33 +179,55 @@ def checkbox_layout(attributes):
     return layout
 
 
-def B1(*args, **kwargs):
+def search_button(key: str = None, **kwargs):
     """
-    Action button element defaults.
+    Search button layout.
     """
-    width = mod_const.B1_WIDTH
+    text_color = mod_const.DEFAULT_TEXT_COLOR
+    disabled_text_color = mod_const.DISABLED_TEXT_COLOR
+    bg_color = mod_const.BORDER_COLOR
+    disabled_bg_color = mod_const.BORDER_COLOR
+    highlight_color = mod_const.BUTTON_HOVER_COLOR
+    size = mod_const.BTTN_SIZE
+    icon = mod_const.BTTN_SEARCH_ICON
 
-    return sg.Button(*args, **kwargs, size=(width, 1))
+    bttn_key = '-SEARCH-' if not isinstance(key, str) else key
+    layout = sg.Button('', key=bttn_key, image_data=icon, image_size=size, button_color=(text_color, bg_color),
+                       disabled_button_color=(disabled_text_color, disabled_bg_color),
+                       mouseover_colors=(text_color, highlight_color), border_width=1, use_ttk_buttons=False, **kwargs)
+
+    return layout
 
 
-def B2(*args, **kwargs):
+def parameter_button(key: str = None, **kwargs):
     """
-    Panel button element defaults.
+    Parameter button layout.
     """
-    width = mod_const.B2_WIDTH
+    text_color = mod_const.DEFAULT_TEXT_COLOR
+    disabled_text_color = mod_const.DISABLED_TEXT_COLOR
+    bg_color = mod_const.BORDER_COLOR
+    disabled_bg_color = mod_const.BORDER_COLOR
+    highlight_color = mod_const.BUTTON_HOVER_COLOR
+    size = mod_const.BTTN_SIZE
+    icon = mod_const.BTTN_PARAM_ICON
 
-    return sg.Button(*args, **kwargs, size=(width, 1))
+    bttn_key = '-PARAMETER-' if not isinstance(key, str) else key
+    layout = sg.Button('', key=bttn_key, image_data=icon, image_size=size, button_color=(text_color, bg_color),
+                       disabled_button_color=(disabled_text_color, disabled_bg_color),
+                       mouseover_colors=(text_color, highlight_color), border_width=1, use_ttk_buttons=False, **kwargs)
+
+    return layout
 
 
 def nav_bttn(*args, **kwargs):
     """
-    Navigation button.
+    Navigation button layout.
     """
+    text_color = mod_const.DEFAULT_TEXT_COLOR
     size = mod_const.BTTN_SIZE
-    text_col = mod_const.DEFAULT_TEXT_COLOR
     highlight_col = mod_const.BUTTON_HOVER_COLOR
 
-    return sg.Button(*args, **kwargs, image_size=size, mouseover_colors=(text_col, highlight_col))
+    return sg.Button(*args, **kwargs, image_size=size, mouseover_colors=(text_color, highlight_col))
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
