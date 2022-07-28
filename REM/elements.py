@@ -903,7 +903,7 @@ class DataTable(RecordElement):
                 # Update parameter values
                 for param in self.parameters:
                     try:
-                        param.value = param.format_value(values)
+                        param.format_value(values)
                     except ValueError:
                         msg = 'failed to filter table rows'
                         err = 'incorrectly formatted value provided to filter parameter {}'.format(param.description)

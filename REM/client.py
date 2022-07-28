@@ -1496,6 +1496,8 @@ def thread_operation(func, args, timeout: int = 600, message: str = None):
                     return_value = future.result()
                 except Exception as e:
                     msg = 'threaded operation failed after {TIME} seconds - {ERR}'.format(ERR=e, TIME=elapsed_time)
+                    logger.exception(msg)
+
                     result = {'success': False, 'value': msg}
                 else:
                     result = {'success': True, 'value': return_value}

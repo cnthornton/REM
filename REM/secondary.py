@@ -678,7 +678,7 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
                 acct_params = params[pgroup]
                 has_values = []
                 for acct_param in acct_params:
-                    acct_param.value = acct_param.format_value(values)
+                    acct_param.format_value(values)
 
                     if not acct_param.has_value():  # no value set for parameter
                         if acct_param.required and not acct_param.hidden:  # parameter is both required and visible

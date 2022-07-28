@@ -1062,6 +1062,7 @@ class BankRule:
 
         matches['RecordID'] = matches.index
 
+        print(matches)
         assoc_accounts = matches['Source'].unique()
         for assoc_acct_name in assoc_accounts:
             assoc_acct = self.fetch_account(assoc_acct_name)
@@ -2225,6 +2226,12 @@ def search_associations(df, ref_df, rules):
         for assoc_acct_name in rules:
             # Subset merged df to include only the association records with the given account name
             assoc_acct_df = ref_df[ref_df['_Source_'] == assoc_acct_name]
+            if assoc_acct_df.empty:
+                msg = 'no entries in association {ASSOC} to compare against record {ROW}' \
+                    .format(ASSOC=assoc_acct_name, ROW=record_id)
+                logger.debug(msg)
+
+                continue
 
             assoc_rules = rules[assoc_acct_name]
             cols = list(assoc_rules)
