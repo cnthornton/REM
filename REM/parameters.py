@@ -146,18 +146,7 @@ class InputParameter:
         except KeyError:
             self.default = None
 
-        try:
-            self.value = self._format_value(self.default)
-        except Exception as e:
-            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
-            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            self.value = None
-            self.default = None
-
-        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-                     '{DEF}, and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        self.value = None
 
         self.disabled = not self.editable
         self.dimensions = None
@@ -441,7 +430,7 @@ class InputParameter:
             value_fmt = self._format_value(input_value)
         except Exception as e:
             msg = "failed to set the parameter's value = {ERR}".format(ERR=e)
-            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             value_fmt = current_value
         else:
@@ -699,6 +688,19 @@ class InputParameterText(InputParameterStandard):
                                'dtype is set to a supported string or category type'.format(NAME=self.name))
                 self.pattern_matching = False
 
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
     def _enforce_formatting(self, value):
         """
         Enforce the correct formatting of user input into the parameter element.
@@ -950,6 +952,19 @@ class InputParameterDate(InputParameterStandard):
             self.localize = bool(int(entry['localize']))
         except (KeyError, ValueError):
             self.localize = False
+
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def _format_value(self, value):
         """
@@ -1215,6 +1230,19 @@ class InputParameterCombo(InputParameter):
 
                 if value_fmt not in self.aliases:
                     self.aliases[value_fmt] = combo_value
+
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def _format_value(self, value):
         """
@@ -1505,6 +1533,19 @@ class InputParameterRange(InputParameterComp):
         super().__init__(name, entry)
         self._function = mod_win2.range_value_window
 
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
     def _format_value(self, value):
         """
         Format the provided value according to the parameter's data type.
@@ -1697,6 +1738,19 @@ class InputParameterCondition(InputParameterComp):
         self._operators = ['>', '<', '>=', '<=', '=']
         self._function = mod_win2.conditional_value_window
 
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
     def _format_value(self, value):
         """
         Format the provided value according to the parameter's data type.
@@ -1887,6 +1941,19 @@ class InputParamterMultiple(InputParameter):
             else:
                 self.menu_values.append(value_fmt)
 
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.exception('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
     def _format_value(self, value):
         """
         Format the provided value according to the parameter's data type.
@@ -1899,12 +1966,12 @@ class InputParamterMultiple(InputParameter):
         """
         format_value = settings.format_value
 
-        if value == '' or pd.isna(value):
-            return []
-
         dtype = self.dtype
         aliases = self.aliases
         aliases_rev = {j: i for i, j in aliases.items()}
+
+        if not value:
+            return []
 
         if isinstance(value, list) or isinstance(value, tuple):
             selected_values = value
