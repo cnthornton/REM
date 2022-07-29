@@ -591,15 +591,14 @@ def importer_layout(win_size: tuple = None):
     #                          pad=(pad_el, 0), disabled=False,
     #                          tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
 
-    bttn_layout = [[button_layout('-BACK-', icon=mod_const.BTTN_LEFT_ICON, pad=(pad_el, 0), disabled=True,
+    bttn_layout = [[button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0), disabled=False,
+                                  tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut)),
+                    button_layout('-BACK-', icon=mod_const.BTTN_LEFT_ICON, pad=(pad_el, 0), disabled=True,
                                   tooltip='Return to previous panel ({})'.format(back_shortcut)),
                     button_layout('-NEXT-', icon=mod_const.BTTN_RIGHT_ICON, pad=(pad_el, 0), disabled=False,
                                   tooltip='Move to next panel ({})'.format(next_shortcut)),
-                    button_layout('-IMPORT-', icon=mod_const.BTTN_SAVE_ICON, pad=(pad_el, 0), disabled=True,
-                                  bind_return_key=True,
-                                  tooltip='Save records to the selected database table ({})'.format(save_shortcut)),
-                    button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0), disabled=False,
-                                  tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
+                    button_layout('-IMPORT-', icon=mod_const.BTTN_SAVE_ICON, disabled=True,
+                                  tooltip='Save records to the selected database table ({})'.format(save_shortcut))]]
 
     sidebar_layout = [
         [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=frame_col)]], background_color=frame_col),
