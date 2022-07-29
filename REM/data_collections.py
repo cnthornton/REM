@@ -761,12 +761,15 @@ class DataCollection:
                     .format(NAME=self.name, IDS=merge_inds))
         first_ind = indices[0]
 
+        numeric_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes
         for field in df.columns:
             dtype = dtypes[field]
-            if dtype in settings.supported_int_dtypes or dtype in settings.supported_int_dtypes:
+            if dtype in numeric_dtypes:
                 merge_val = df.loc[indices, field].sum()
+                print('field {} is a numeric field with summed value {}'.format(field, merge_val))
                 df.loc[first_ind, field] = merge_val
 
+        print('removing merged record at indices: {}'.format(indices[1:]))
         self.delete(indices[1:])
 
         return df.copy()
@@ -1337,22 +1340,27 @@ class RecordCollection(DataCollection):
             logger.error('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             return df.copy()
-        elif n_exist == 1:
+        elif n_exist == 1:  # use the existing entry as the reference to merge on
             first_ind = existing_entries.index[0]
+            print('using entry with index {} as the entry to merge on'.format(first_ind))
             remaining_inds = [i for i in indices if i != first_ind]
-        else:
+        else:  # Use the first index as the reference to merge on
             first_ind = indices[0]
             remaining_inds = indices[1:]
 
         logger.info('DataCollection {NAME}: merging collection entries at indices {IDS}'
                     .format(NAME=self.name, IDS=merge_inds))
 
+        numeric_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes
         for field in df.columns:
             dtype = dtypes[field]
-            if dtype in settings.supported_int_dtypes or dtype in settings.supported_int_dtypes:
+            print('field {} has dtype {}'.format(field, dtype))
+            if dtype in numeric_dtypes:
                 merge_val = df.loc[indices, field].sum()
+                print('field {} is a numeric field. Summed value is {}'.format(field, merge_val))
                 df.loc[first_ind, field] = merge_val
 
+        print('removing merged record at indices: {}'.format(remaining_inds))
         self.delete(remaining_inds)
 
         return df.copy()
