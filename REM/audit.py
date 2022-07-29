@@ -564,8 +564,8 @@ class AuditRule:
         # Panel component size
         title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
         hbar_h = 2 + pad_v * 2  # horizontal bar with top/bottom padding
-        bttn_h = mod_const.BTTN_HEIGHT  # height of the panel navigation buttons
-        header_h = 52  # height of the parameter bar
+        bttn_h = mod_const.BTTN_ROW_HEIGHT  # height of the panel navigation buttons
+        header_h = mod_const.HEADER_ROW_HEIGHT  # height of the parameter bar
 
         frame_w = width - pad_frame * 2  # layout width minus audit panel left/right padding
         frame_h = height - title_h - bttn_h  # layout height minus the title bar and buttons height
@@ -626,7 +626,7 @@ class AuditRule:
         # Standard elements
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        bttn_h = mod_const.BTTN_HEIGHT
+        bttn_h = mod_const.BTTN_ROW_HEIGHT
         bttn_layout = sg.Col([
             [sg.Canvas(size=(0, bttn_h)),
              #mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
@@ -659,9 +659,9 @@ class AuditRule:
 
         pad_h = mod_const.VERT_PAD + 2  # padding plus height of the horizontal bar
         pad_w = pad_frame * 2
-        bttn_h = mod_const.BTTN_HEIGHT
+        bttn_h = mod_const.BTTN_ROW_HEIGHT
         title_h = mod_const.TITLE_HEIGHT
-        header_h = 52
+        header_h = mod_const.HEADER_ROW_HEIGHT  # height of the parameter bar
 
         # Resize the panel
         frame_w = width - pad_w  # width minus padding

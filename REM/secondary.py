@@ -307,7 +307,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     bffr_h += title_h
 
     # Button layout
-    bttn_h = mod_const.BTTN_HEIGHT
+    bttn_h = mod_const.BTTN_ROW_HEIGHT
     #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
     #                sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
     #                          pad=(pad_el, 0), visible=can_delete,
@@ -1794,7 +1794,7 @@ def record_import_window(table, enable_new: bool = False):
                      sg.Text(title, pad=(pad_frame, 0), background_color=header_col, font=header_font)]]
 
     # Control buttons
-    bttn_h = mod_const.BTTN_HEIGHT
+    bttn_h = mod_const.BTTN_ROW_HEIGHT
     #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
     #                sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
     #                          disabled=False,
@@ -2027,7 +2027,7 @@ def import_window(table, params: list = None):
     else:
         top_layout = [[]]
 
-    bttn_h = mod_const.BTTN_HEIGHT
+    bttn_h = mod_const.BTTN_ROW_HEIGHT
     #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
     #                sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
     #                          pad=(pad_el, 0), tooltip='Cancel importing'),

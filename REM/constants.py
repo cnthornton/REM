@@ -77,16 +77,16 @@ B1_WIDTH = 20
 B2_WIDTH = 6
 IN1_WIDTH = 20
 BTTN_SIZE = (60, 26)
-BTTN_SIZE_CHAR = (20, 1)
 PARAM_SIZE_CHAR = (20, 1)  # characters
 TITLE_WIDTH = 300
 TITLE_HEIGHT = 60
-SCROLL_WIDTH = 18
 BORDER_WIDTH = 2
-SPACER_WIDTH = 40  # space between parameter elements in pixels
-BTTN_HEIGHT = 70
-PANELBAR_HEIGHT = 22  # height of the collapsible panel bars
 CHECKBOX_SIZE = (22, 22)
+SCROLL_WIDTH = 18
+SPACER_WIDTH = 40  # space between parameter elements in pixels
+PANELBAR_HEIGHT = 22  # height of the collapsible panel bars
+BTTN_ROW_HEIGHT = 66  # control button row height - button height plus top/bottom padding
+HEADER_ROW_HEIGHT = 52  # panel header row hight
 
 # Input and parameter fields
 FIELD_SIZE = (150, 25)  # standard input field size
