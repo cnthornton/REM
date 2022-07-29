@@ -1628,7 +1628,9 @@ class DataTable(RecordElement):
 
             filter_rows.append(current_row)
 
-        filter_bttn = mod_lo.filter_button(key=self.key_lookup('Filter'), disabled=False,
+        #filter_bttn = mod_lo.filter_button(key=self.key_lookup('Filter'), disabled=False,
+        #                                   tooltip='Filter table rows ({})'.format(filter_shortcut))
+        filter_bttn = mod_lo.button_layout(self.key_lookup('Filter'), icon=mod_const.BTTN_FILTER_ICON, disabled=False,
                                            tooltip='Filter table rows ({})'.format(filter_shortcut))
         filter_rows.append([sg.Col([[sg.VPush(background_color=frame_col)],
                                     [filter_bttn],

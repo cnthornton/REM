@@ -587,7 +587,9 @@ class AuditRule:
         # Panel header
         param_key = self.key_lookup('Start')
         header_key = self.key_lookup('Header')
-        param_bttn = mod_lo.parameter_button(key=param_key, disabled=False, tooltip='Select audit parameters')
+        #param_bttn = mod_lo.parameter_button(key=param_key, disabled=False, tooltip='Select audit parameters')
+        param_bttn = mod_lo.button_layout(param_key, icon=mod_const.BTTN_TOOL_ICON, disabled=False,
+                                          tooltip='Select audit parameters')
         header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
                                  sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
                                           pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
@@ -627,10 +629,14 @@ class AuditRule:
         bttn_h = mod_const.BTTN_HEIGHT
         bttn_layout = sg.Col([
             [sg.Canvas(size=(0, bttn_h)),
-             mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
-                             tooltip='Return to home screen'),
-             mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
-                             tooltip='Save results', metadata={'disabled': True})
+             #mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
+             #                tooltip='Return to home screen'),
+             #mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
+             #                tooltip='Save results', metadata={'disabled': True})
+             mod_lo.button_layout(cancel_key, icon=mod_const.BTTN_CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
+                                  tooltip='Return to home screen'),
+             mod_lo.button_layout(save_key, icon=mod_const.BTTN_SAVE_ICON, disabled=True,
+                                  tooltip='Create a record for the audit', metadata={'disabled': True})
              ]], vertical_alignment='c', element_justification='c', expand_x=True)
 
         frame_key = self.key_lookup('Frame')

@@ -21,7 +21,6 @@ def set_size(window, element_key, size):
     except AttributeError:
         scrollable = False
 
-    #if scrollable or element.Size != (None, None):
     if scrollable:
         element.Widget.canvas.configure(**options)
         element.contents_changed()
@@ -179,75 +178,24 @@ def checkbox_layout(attributes):
     return layout
 
 
-def search_button(key: str = None, **kwargs):
+def button_layout(bttn_key, icon: str = None, **kwargs):
     """
-    Search button layout.
+    Program button layout.
     """
+    # Button constants
     text_color = mod_const.DEFAULT_TEXT_COLOR
     disabled_text_color = mod_const.DISABLED_TEXT_COLOR
     bg_color = mod_const.BORDER_COLOR
     disabled_bg_color = mod_const.BORDER_COLOR
     highlight_color = mod_const.BUTTON_HOVER_COLOR
     size = mod_const.BTTN_SIZE
-    icon = mod_const.BTTN_SEARCH_ICON
 
-    bttn_key = '-SEARCH-' if not isinstance(key, str) else key
-    layout = sg.Button('', key=bttn_key, image_data=icon, image_size=size, button_color=(text_color, bg_color),
+    bttn_icon = icon if icon is not None else mod_const.BLANK_ICON
+    layout = sg.Button('', key=bttn_key, image_data=bttn_icon, image_size=size, button_color=(text_color, bg_color),
                        disabled_button_color=(disabled_text_color, disabled_bg_color),
                        mouseover_colors=(text_color, highlight_color), border_width=1, use_ttk_buttons=False, **kwargs)
 
     return layout
-
-
-def parameter_button(key: str = None, **kwargs):
-    """
-    Parameter button layout.
-    """
-    text_color = mod_const.DEFAULT_TEXT_COLOR
-    disabled_text_color = mod_const.DISABLED_TEXT_COLOR
-    bg_color = mod_const.BORDER_COLOR
-    disabled_bg_color = mod_const.BORDER_COLOR
-    highlight_color = mod_const.BUTTON_HOVER_COLOR
-    size = mod_const.BTTN_SIZE
-    icon = mod_const.BTTN_PARAM_ICON
-
-    bttn_key = '-PARAMETER-' if not isinstance(key, str) else key
-    layout = sg.Button('', key=bttn_key, image_data=icon, image_size=size, button_color=(text_color, bg_color),
-                       disabled_button_color=(disabled_text_color, disabled_bg_color),
-                       mouseover_colors=(text_color, highlight_color), border_width=1, use_ttk_buttons=False, **kwargs)
-
-    return layout
-
-
-def filter_button(key: str = None, **kwargs):
-    """
-    Parameter button layout.
-    """
-    text_color = mod_const.DEFAULT_TEXT_COLOR
-    disabled_text_color = mod_const.DISABLED_TEXT_COLOR
-    bg_color = mod_const.BORDER_COLOR
-    disabled_bg_color = mod_const.BORDER_COLOR
-    highlight_color = mod_const.BUTTON_HOVER_COLOR
-    size = mod_const.BTTN_SIZE
-    icon = mod_const.BTTN_FILTER_ICON
-
-    bttn_key = '-FILTER-' if not isinstance(key, str) else key
-    layout = sg.Button('', key=bttn_key, image_data=icon, image_size=size, button_color=(text_color, bg_color),
-                       disabled_button_color=(disabled_text_color, disabled_bg_color),
-                       mouseover_colors=(text_color, highlight_color), border_width=1, use_ttk_buttons=False, **kwargs)
-
-    return layout
-
-
-def nav_bttn(*args, **kwargs):
-    """
-    Navigation button layout.
-    """
-    text_color = mod_const.DEFAULT_TEXT_COLOR
-    size = mod_const.BTTN_SIZE
-    highlight_col = mod_const.BUTTON_HOVER_COLOR
-
-    return sg.Button(*args, **kwargs, image_size=size, mouseover_colors=(text_color, highlight_col))
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
@@ -630,18 +578,28 @@ def importer_layout(win_size: tuple = None):
                      sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False,
                                       border_width=0, relief='flat')]], pad=(0, pad_v), expand_x=True)]]
 
-    bttn_layout = [[sg.Button('', key='-BACK-', image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), disabled=True,
-                              tooltip='Return to previous panel ({})'.format(back_shortcut)),
-                    sg.Button('', key='-NEXT-', image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), disabled=False,
-                              tooltip='Move to next panel ({})'.format(next_shortcut)),
-                    sg.Button('', bind_return_key=True, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                              key='-IMPORT-', pad=(pad_el, 0), disabled=True,
-                              tooltip='Import file contents to the selected database table ({})'.format(save_shortcut)),
-                    sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), disabled=False,
-                              tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
+    #bttn_layout = [[sg.Button('', key='-BACK-', image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), disabled=True,
+    #                          tooltip='Return to previous panel ({})'.format(back_shortcut)),
+    #                sg.Button('', key='-NEXT-', image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), disabled=False,
+    #                          tooltip='Move to next panel ({})'.format(next_shortcut)),
+    #                sg.Button('', bind_return_key=True, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          key='-IMPORT-', pad=(pad_el, 0), disabled=True,
+    #                          tooltip='Import file contents to the selected database table ({})'.format(save_shortcut)),
+    #                sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), disabled=False,
+    #                          tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
+
+    bttn_layout = [[button_layout('-BACK-', icon=mod_const.BTTN_LEFT_ICON, pad=(pad_el, 0), disabled=True,
+                                  tooltip='Return to previous panel ({})'.format(back_shortcut)),
+                    button_layout('-NEXT-', icon=mod_const.BTTN_RIGHT_ICON, pad=(pad_el, 0), disabled=False,
+                                  tooltip='Move to next panel ({})'.format(next_shortcut)),
+                    button_layout('-IMPORT-', icon=mod_const.BTTN_SAVE_ICON, pad=(pad_el, 0), disabled=True,
+                                  bind_return_key=True,
+                                  tooltip='Save records to the selected database table ({})'.format(save_shortcut)),
+                    button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0), disabled=False,
+                                  tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
 
     sidebar_layout = [
         [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=frame_col)]], background_color=frame_col),

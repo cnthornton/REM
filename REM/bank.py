@@ -712,7 +712,9 @@ class BankRule:
         db_size = (max([len(i) for i in settings.alt_dbs]), 1)
         param_size = (max([len(i) for i in entries]), 1)
 
-        param_bttn = mod_lo.parameter_button(key=param_key, disabled=True, tooltip='Select reconciliation parameters')
+        #param_bttn = mod_lo.parameter_button(key=param_key, disabled=True, tooltip='Select reconciliation parameters')
+        param_bttn = mod_lo.button_layout(param_key, icon=mod_const.BTTN_TOOL_ICON, disabled=True,
+                                          tooltip='Select reconcilation parameters')
         header1 = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
                            sg.Col([[sg.Combo(entries, default_value='', key=entry_key, size=param_size,
                                              pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
@@ -808,10 +810,14 @@ class BankRule:
         bttn_h = mod_const.BTTN_HEIGHT
         bttn_layout = sg.Col([
             [sg.Canvas(size=(0, bttn_h)),
-             mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
-                             tooltip='Return to home screen'),
-             mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
-                             tooltip='Save results', metadata={'disabled': True})
+             #mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
+             #                tooltip='Return to home screen'),
+             #mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
+             #                tooltip='Save results', metadata={'disabled': True})
+             mod_lo.button_layout(cancel_key, icon=mod_const.BTTN_CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
+                                  tooltip='Return to home screen'),
+             mod_lo.button_layout(save_key, icon=mod_const.BTTN_SAVE_ICON, disabled=True,
+                                  tooltip='Save the results of the reconciliation', metadata={'disabled': True})
              ]], key=buttons_key, vertical_alignment='c', element_justification='c', expand_x=True)
 
         frame_key = self.key_lookup('Frame')

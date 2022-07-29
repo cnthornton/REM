@@ -230,10 +230,15 @@ def debug_window():
     # Layout
     log_levels = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
-    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), tooltip='Stop debugging'),
-                    sg.Button('', key='-CLEAR-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0), tooltip='Clear debug output')]]
+    bttn_layout = [[mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0),
+                                         tooltip='Clode debugging window'),
+                    mod_lo.button_layout('-CLEAR-', icon=mod_const.BTTN_DELETE_ICON, bind_return_key=True,
+                                         pad=(pad_el, 0), tooltip='Clear debug output')]]
+
+    #bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), tooltip='Stop debugging'),
+    #                sg.Button('', key='-CLEAR-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          bind_return_key=True, pad=(pad_el, 0), tooltip='Clear debug output')]]
 
     debug_layout = [[sg.Text('Log level:', pad=((pad_frame, pad_el), (pad_frame, pad_v)), font=bold_font,
                              background_color=bg_col),
@@ -303,16 +308,24 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     # Button layout
     bttn_h = mod_const.BTTN_HEIGHT
+    #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+    #                sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), visible=can_delete,
+    #                          tooltip='Delete the record from the database'),
+    #                sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), visible=can_accept,
+    #                          tooltip='Accept changes to the record'),
+    #                sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), visible=can_save,
+    #                          tooltip='Save record changes to the database')]]
+
     bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                    sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), visible=can_delete,
-                              tooltip='Delete the record from the database'),
-                    sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), visible=can_accept,
-                              tooltip='Accept changes to the record'),
-                    sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), visible=can_save,
-                              tooltip='Save record changes to the database')]]
+                    mod_lo.button_layout('-DELETE-', icon=mod_const.BTTN_DELETE_ICON, pad=(pad_el, 0),
+                                         visible=can_delete, tooltip='Delete record from the database'),
+                    mod_lo.button_layout('-OK-', icon=mod_const.BTTN_APPROVE_ICON, pad=(pad_el, 0), visible=can_accept,
+                                         tooltip='Accept changes to the record'),
+                    mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_SAVE_ICON, pad=(pad_el, 0), visible=can_save,
+                                         tooltip='Save changes to the database')]]
 
     bffr_h += bttn_h
 
@@ -599,8 +612,10 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
 
     # Control elements
     load_key = '-LOAD-'
-    bttn_layout = [[sg.Button('', key=load_key, image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              disabled=False, tooltip='Confirm settings ({})'.format(load_shortcut))]]
+    #bttn_layout = [[sg.Button('', key=load_key, image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          disabled=False, tooltip='Confirm settings ({})'.format(load_shortcut))]]
+    bttn_layout = [[mod_lo.button_layout(load_key, icon=mod_const.BTTN_APPROVE_ICON,
+                                         tooltip='Confirm settings ({})'.format(load_shortcut))]]
 
     # Window layout
     height_key = '-HEIGHT-'
@@ -1780,13 +1795,19 @@ def record_import_window(table, enable_new: bool = False):
 
     # Control buttons
     bttn_h = mod_const.BTTN_HEIGHT
+    #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+    #                sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          disabled=False,
+    #                          tooltip='Cancel data import ({})'.format(cancel_shortcut)),
+    #                sg.Button('', key='-NEW-', image_data=mod_const.NEW_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=((0, pad_el), 0), visible=creatable,
+    #                          tooltip='Create new record ({})'.format(new_shortcut))]]
+
     bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                    sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              disabled=False,
-                              tooltip='Cancel data import ({})'.format(cancel_shortcut)),
-                    sg.Button('', key='-NEW-', image_data=mod_const.NEW_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=((0, pad_el), 0), visible=creatable,
-                              tooltip='Create new record ({})'.format(new_shortcut))]]
+                    mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=((0, pad_el), 0),
+                                         tooltip='Cancel database importing ({})'.format(cancel_shortcut)),
+                    mod_lo.button_layout('-NEW-', icon=mod_const.BTTN_NEW_ICON, visible=creatable,
+                                         tooltip='Create a new program record ({})'.format(new_shortcut))]]
 
     other_h = title_h + bttn_h
 
@@ -1996,7 +2017,9 @@ def import_window(table, params: list = None):
 
     if len(param_layout) > 0:
         search_key = '-FIND-'
-        search_bttn = sg.vbottom(mod_lo.search_button(key=search_key, disabled=(not enable_search)))
+        #search_bttn = sg.vbottom(mod_lo.search_button(key=search_key, disabled=(not enable_search)))
+        search_bttn = sg.vbottom(mod_lo.button_layout(search_key, icon=mod_const.BTTN_SEARCH_ICON,
+                                                      disabled=(not enable_search)))
         param_layout.append(search_bttn)
 
         top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col, vertical_alignment='c')],
@@ -2005,11 +2028,17 @@ def import_window(table, params: list = None):
         top_layout = [[]]
 
     bttn_h = mod_const.BTTN_HEIGHT
+    #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+    #                sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), tooltip='Cancel importing'),
+    #                sg.Button('', key='-IMPORT-', image_data=mod_const.DB_IMPORT_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), tooltip='Import the selected transaction orders')]]
+
     bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                    sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), tooltip='Cancel importing'),
-                    sg.Button('', key='-IMPORT-', image_data=mod_const.DB_IMPORT_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), tooltip='Import the selected transaction orders')]]
+                    mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0),
+                                         tooltip='Cancel importing'),
+                    mod_lo.button_layout('-IMPORT-', icon=mod_const.BTTN_APPROVE_ICON, pad=(pad_el, 0),
+                                         tooltip='Import selected records')]]
 
     other_h = title_h + bttn_h + param_h
 
@@ -2176,12 +2205,17 @@ def edit_settings(win_size: tuple = None):
     # GUI layout
 
     # Button layout
-    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0),
-                              tooltip='Cancel edit ({})'.format(cancel_shortcut)),
-                    sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Save changes ({})'.format(save_shortcut))]]
+    #bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0),
+    #                          tooltip='Cancel edit ({})'.format(cancel_shortcut)),
+    #                sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          bind_return_key=True, pad=(pad_el, 0),
+    #                          tooltip='Save changes ({})'.format(save_shortcut))]]
+
+    bttn_layout = [[mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0),
+                                         tooltip='Cancel edit ({})'.format(cancel_shortcut)),
+                    mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_APPROVE_ICON, pad=(pad_el, 0),
+                                         tooltip='Save changes ({})'.format(save_shortcut))]]
 
     # Get parameter layout from settings
     settings_layout = settings.layout(win_size)
@@ -2294,8 +2328,9 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
         elem_layout = sg.Col([row1, row2], pad=(int(pad_h / 2), 0), background_color=bg_color, expand_y=True,
                              expand_x=True, element_justification='c')
 
-    bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                            bind_return_key=True, pad=(0, int(pad_v / 2)))
+    #bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                        bind_return_key=True, pad=(0, int(pad_v / 2)))
+    bttn_layout = mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_APPROVE_ICON, pad=(0, int(pad_v / 2)))
 
     layout = [[sg.Frame('', [[elem_layout], [bttn_layout]], size=(win_w, win_h), background_color=bg_color,
                         title_color=mod_const.BORDER_COLOR, element_justification='c', vertical_alignment='t')]]
@@ -2403,8 +2438,9 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     elem_layout = sg.Col([row1], pad=(int(pad_h / 2), 0), background_color=bg_color, expand_x=True, expand_y=True,
                          element_justification='c')
 
-    bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                            bind_return_key=True, pad=(0, int(pad_v / 2)))
+    #bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                        bind_return_key=True, pad=(0, int(pad_v / 2)))
+    bttn_layout = mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_APPROVE_ICON, pad=(0, int(pad_v / 2)))
 
     layout = [[sg.Frame('', [[elem_layout], [bttn_layout]], size=(win_w, win_h), background_color=bg_color,
                         title_color=mod_const.BORDER_COLOR, element_justification='c', vertical_alignment='t')]]
@@ -2523,9 +2559,10 @@ def select_value_window(values, current: list = None, title: str = None, locatio
     elem_layout = sg.Col([[row1]], pad=(int(pad_h / 2), 0), background_color=bg_color, expand_x=True, expand_y=True,
                          element_justification='c')
 
-    bttn_layout = sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                            bind_return_key=True, pad=(0, int(pad_v / 2)),
-                            tooltip='Accept selection ({})'.format(save_shortcut))
+    #bttn_layout = sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                        bind_return_key=True, pad=(0, int(pad_v / 2)),
+    #                        tooltip='Accept selection ({})'.format(save_shortcut))
+    bttn_layout = mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_APPROVE_ICON, pad=(0, int(pad_v / 2)))
 
     layout = [[sg.Frame('', [[elem_layout], [bttn_layout]], size=(win_w, win_h), background_color=bg_color,
                         title_color=mod_const.BORDER_COLOR, element_justification='c')]]
@@ -2546,7 +2583,7 @@ def select_value_window(values, current: list = None, title: str = None, locatio
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
             break
 
-        if event in ('-OK-', '-HK_ENTER-'):
+        if event in ('-SAVE-', '-HK_ENTER-'):
             selection = values['-SELECT-']
 
             break
@@ -2649,10 +2686,15 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     # GUI layout
 
     # Buttons
-    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), tooltip='Cancel edit'),
-                    sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
+    #bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          pad=(pad_el, 0), tooltip='Cancel edit'),
+    #                sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+    #                          bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
+
+    bttn_layout = [[mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0),
+                                         tooltip='Cancel edit'),
+                    mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_APPROVE_ICON, pad=(pad_el, 0),
+                                         tooltip='Save changes')]]
 
     # Table
     lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
@@ -2773,16 +2815,19 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         window[focus_element].set_focus()
         window[focus_element].update(select=True)
 
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
+
     # Start event loop
     while True:
         event, values = window.read()
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-', '-HK_ESCAPE-'):  # selected close-window or Cancel
             row = None
 
             break
 
-        if event == '-SAVE-':  # click 'Save' button
+        if event in ('-SAVE-', '-HK_ENTER-'):  # click 'Save' button
             ready_to_save = []
             for column in edit_keys:
                 col_key = edit_keys[column]
