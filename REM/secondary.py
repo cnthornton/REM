@@ -2682,11 +2682,6 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     # GUI layout
 
     # Buttons
-    #bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          pad=(pad_el, 0), tooltip='Cancel edit'),
-    #                sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
-
     bttn_layout = [[mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0),
                                          tooltip='Cancel edit'),
                     mod_lo.button_layout('-SAVE-', icon=mod_const.BTTN_APPROVE_ICON, pad=(pad_el, 0),

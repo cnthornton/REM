@@ -687,20 +687,22 @@ class DataCollection:
             reindex (bool): reset collection entry indices after append.
         """
         df = self.df.copy()
-        add_df = add_df.copy()
-
         state_fields = {self._added_column: new,
                         self._edited_column: False,
                         self._deleted_column: False}
 
-        if add_df.empty:  # no data to add
-            return df
-
-        # Convert add_df to dataframe
+        # Ensure the correct format of the input
         if isinstance(add_df, pd.Series):
             add_df = add_df.to_frame().T
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
+        elif isinstance(add_df, pd.DataFrame):
+            add_df = add_df.copy()
+        else:
+            return df
+
+        if add_df.empty:  # no data to add
+            return df
 
         # Add the "state" columns to the new data, if not set
         for state_field in state_fields:
@@ -1346,22 +1348,24 @@ class RecordCollection(DataCollection):
 
             reindex (bool): reset collection entry indices after append.
         """
-        df = self.df.copy()
-        add_df = add_df.copy()
         id_col = self.id_column
-
+        df = self.df.copy()
         state_fields = {self._added_column: new,
                         self._edited_column: False,
                         self._deleted_column: False}
 
-        if add_df.empty:  # no data to add
-            return df
-
-        # Convert add_df to dataframe
+        # Ensure the correct format of the input
         if isinstance(add_df, pd.Series):
             add_df = add_df.to_frame().T
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
+        elif isinstance(add_df, pd.DataFrame):
+            add_df = add_df.copy()
+        else:
+            return df
+
+        if add_df.empty:  # no data to add
+            return df
 
         add_columns = add_df.columns.tolist()  # original columns of the add dataframe
 
@@ -1574,20 +1578,22 @@ class ReferenceCollection(DataCollection):
             reindex (bool): reset collection entry indices after append.
         """
         df = self.df.copy()
-        add_df = add_df.copy()
-
         state_fields = {self._added_column: new,
                         self._edited_column: False,
                         self._deleted_column: False}
 
-        if add_df.empty:  # no data to add
-            return df
-
-        # Convert add_df to dataframe
+        # Ensure the correct format of the input
         if isinstance(add_df, pd.Series):
             add_df = add_df.to_frame().T
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
+        elif isinstance(add_df, pd.DataFrame):
+            add_df = add_df.copy()
+        else:
+            return df
+
+        if add_df.empty:  # no data to add
+            return df
 
         add_columns = add_df.columns.tolist()  # original columns of the add dataframe
 

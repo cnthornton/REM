@@ -1067,6 +1067,23 @@ class DataTable(RecordElement):
                     # collection.delete(indices)
                     update_event = True
 
+            # Create new action button clicked
+            elif element_event == 'Add':
+                if not self.enabled(element_event):
+                    return triggers
+
+                try:
+                    row = self.create_entry()
+                except Exception as e:
+                    msg = 'failed to run table create entry event'
+                    logger.exception(self.format_log(msg, err=e))
+                else:
+                    if row is not None:
+                        logger.debug(self.format_log('appending values {VALS} to the table'.format(VALS=row)))
+                        collection.append(row, inplace=True, new=True)
+
+                        update_event = True
+
         if update_event:
             self.edited = True
             triggers['ValueEvent'] = True
@@ -1630,8 +1647,6 @@ class DataTable(RecordElement):
 
             filter_rows.append(current_row)
 
-        #filter_bttn = mod_lo.filter_button(key=self.key_lookup('Filter'), disabled=False,
-        #                                   tooltip='Filter table rows ({})'.format(filter_shortcut))
         filter_bttn = mod_lo.button_layout(self.key_lookup('Filter'), icon=mod_const.BTTN_FILTER_ICON, disabled=False,
                                            tooltip='Filter table rows ({})'.format(filter_shortcut))
         filter_rows.append([sg.Col([[sg.VPush(background_color=frame_col)],
@@ -2072,6 +2087,20 @@ class DataTable(RecordElement):
         """
         return self.check_requirements()
 
+    def create_entry(self):
+        """
+        Create a new entry for the table.
+        """
+        collection = self.collection
+        display_map = self.display_columns
+
+        edit_columns = {i: j for i, j in collection.dtypes if i in display_map}
+
+        row = collection.enforce_conformity(pd.Series(index=list(collection.dtypes))).squeeze()
+        new_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
+
+        return new_row
+
     def edit_row(self, index):
         """
         Edit existing record values.
@@ -2507,9 +2536,54 @@ class RecordTable(DataTable):
 
         return indices
 
+    def create_record(self, data=None):
+        """
+        Create new record and add it to the table.
+        """
+        record_type = self.record_type
+        header = self.columns
+
+        record_date = datetime.datetime.now()
+        record_entry = settings.records.fetch_rule(record_type)
+
+        # Create a new record object
+        if isinstance(data, pd.DataFrame):
+            record_data = data
+
+            if record_data.empty:
+                msg = self.format_log('unable to create new records from an empty data set')
+                logger.warning(msg)
+
+                return record_data
+
+            creation_date = [record_date for _ in range(record_data.shape[0])]
+        elif isinstance(data, pd.Series):  # single row (pandas series)
+            record_data = data
+            creation_date = record_date
+        elif isinstance(data, dict):
+            record_data = pd.DataFrame(data)
+            creation_date = [record_date for _ in range(record_data.shape[0])]
+        else:
+            record_data = pd.Series(index=header)
+            creation_date = record_date
+
+        record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
+        if not record_id:
+            msg = 'unable to create an ID for the new record'
+            raise AssertionError(msg)
+
+        record_data['RecordID'] = record_id
+        record_data['RecordDate'] = creation_date
+
+        # Use record data to populate component fields when fields are shared between the component and record
+        if isinstance(record_data, pd.Series):
+            record_data = record_data.to_frame().T
+
+        return record_data
+
     def add_record(self, record_data):
         """
-        Create a new record and add it to the records table.
+        Add a record to the records table.
 
         Arguments:
             record_data (DataFrame): initial set of record data.
@@ -2598,6 +2672,31 @@ class RecordTable(DataTable):
         record = mod_win2.record_window(record, view_only=view_only, modify_database=savable)
 
         return record
+
+    def create_entry(self):
+        """
+        Create a new entry for the table.
+        """
+        collection = self.collection
+
+        record_data = collection.enforce_conformity(self.create_record()).squeeze()
+
+        try:
+            record = self._translate_row(record_data, level=1, new_record=True)
+        except Exception as e:
+            msg = 'failed to create new record'
+            logger.error(self.format_log(msg, err=e))
+
+            raise
+
+        # Display the record window
+        record = mod_win2.record_window(record, modify_database=False)
+        try:
+            record_values = record.export_values()
+        except AttributeError:  # record creation was cancelled
+            record_values = None
+
+        return record_values
 
     def import_rows(self, import_df: pd.DataFrame = None):
         """
@@ -2719,6 +2818,33 @@ class ComponentTable(RecordTable):
         else:
             self.association_type = association_type
 
+        self.parent_data = {}
+
+    def update_parent_data(self, data):
+        """
+        Update the parent data attribute.
+        """
+        header = self.columns
+        self.parent_data = {}  # reset existing parent data
+
+        if isinstance(data, pd.Series):
+            parent_data = data.to_dict()
+        elif isinstance(data, dict):
+            parent_data = data
+        else:
+            msg = 'parent data should be supplied as a dictionary or pandas Series'
+            raise TypeError(msg)
+
+        if 'RecordID' not in parent_data:
+            raise AttributeError('{ID} is missing from the parent data'.format(ID='RecordID'))
+
+        if 'RecordDate' not in parent_data:
+            raise AttributeError('{DATE} is missing from the parent data'.format(DATE='RecordDate'))
+
+        for column in parent_data:
+            if column in header:
+                self.parent_data[column] = parent_data[column]
+
     def import_rows(self, import_df: pd.DataFrame = None):
         """
         Import one or more records through the record import window.
@@ -2732,7 +2858,6 @@ class ComponentTable(RecordTable):
         columns = collection.dtypes
 
         if import_df is None:  # start with deleted rows
-            #import_df = collection.data(current=False, deleted_only=True)
             import_df = collection.data(deleted=True)
         current_ids = collection.row_ids()
 
@@ -2812,21 +2937,21 @@ class ComponentTable(RecordTable):
 
         return select_df
 
-    def export_references(self, record_id, edited_only: bool = False):
+    def export_references(self, edited_only: bool = False):
         """
         Export component table records as reference entries.
 
         Arguments:
-            record_id (str): ID(s) of the record(s) referencing the table records.
-
             edited_only (bool): export references only for components that were added or edited.
         """
         collection = self.collection
+        parent_data = self.parent_data
+
         ref_df = collection.as_reference(edited_only=edited_only)
         if ref_df.empty:
             return ref_df
 
-        ref_df.loc[:, 'RecordID'] = record_id
+        ref_df.loc[:, 'RecordID'] = parent_data['RecordID']
         ref_df.loc[:, 'RecordType'] = self.parent
         ref_df.loc[:, 'ReferenceDate'] = datetime.datetime.now()
         ref_df.loc[:, 'ReferenceType'] = self.record_type
@@ -2839,6 +2964,66 @@ class ComponentTable(RecordTable):
         ref_df.loc[:, 'ReferenceNotes'] = ref_df.index.map(annotation_map)
 
         return ref_df
+
+    def create_record(self, data=None):
+        """
+        Create new record and add it to the table.
+        """
+        record_type = self.record_type
+        header = self.columns
+
+        parent_data = self.parent_data
+        print('creating new record using parent data:')
+        print(parent_data)
+        record_date = parent_data.get('RecordDate', datetime.datetime.now())
+        print('creating new records with parent date {}'.format(record_date))
+
+        record_entry = settings.records.fetch_rule(record_type)
+
+        # Create a new record object
+        if isinstance(data, pd.DataFrame):
+            record_data = data
+
+            if record_data.empty:
+                msg = self.format_log('unable to create new records from an empty data set')
+                logger.warning(msg)
+
+                return record_data
+
+            creation_date = [record_date for _ in range(record_data.shape[0])]
+        elif isinstance(data, pd.Series):  # single row (pandas series)
+            record_data = data
+            creation_date = record_date
+        elif isinstance(data, dict):
+            record_data = pd.DataFrame(data)
+            creation_date = [record_date for _ in range(record_data.shape[0])]
+        else:
+            record_data = pd.Series(index=header)
+            creation_date = record_date
+
+        record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
+        if not record_id:
+            msg = 'unable to create an ID for the new record'
+            raise AssertionError(msg)
+
+        record_data['RecordID'] = record_id
+        record_data['RecordDate'] = creation_date
+
+        # Use record data to populate component fields when fields are shared between the component and record
+        if isinstance(record_data, pd.Series):
+            record_data = record_data.to_frame().T
+
+        for default_col in parent_data:
+            default_value = parent_data[default_col]
+            if pd.isna(default_value):
+                continue
+
+            try:  # only replace empty cells with default values
+                record_data[default_col].fillna(default_value, inplace=True)
+            except KeyError:
+                record_data[default_col] = default_value
+
+        return record_data
 
 
 class AssociationTable(RecordTable):

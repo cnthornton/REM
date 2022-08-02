@@ -1332,6 +1332,7 @@ class RecordGroup:
                     .format(N=len(record_dates), TYPE=record_type))
 
         # Get list of unsaved record IDs of the same record type
+        record_dates = mod_dm.format_values(record_dates, 'datetime')
         unsaved_ids = self.get_unsaved_ids(internal_only=False)
         if unsaved_ids is None:
             logger.error('failed to create IDs for the record entries of type "{TYPE}" - unable to obtain a list of '
@@ -1342,8 +1343,8 @@ class RecordGroup:
         try:
             saved_ids = self._search_saved_ids(record_dates)
         except Exception as e:
-            logger.exception('failed to create IDs for the record entries of type {TYPE} - {ERR}'
-                             .format(TYPE=record_type, ERR=e))
+            logger.exception('failed to create IDs for the record entries of type {TYPE} from the set of date {DATE} - '
+                             '{ERR}'.format(TYPE=record_type, DATE=record_dates, ERR=e))
             return None
 
         # Format the date component of the new ID
@@ -1971,8 +1972,8 @@ class DatabaseRecord:
         else:
             raise AttributeError('unknown object type provided to record class "{TYPE}"'.format(TYPE=self.name))
 
-        logger.info('RecordType {NAME}: initializing record'.format(NAME=self.name))
-        logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
+        logger.info('RecordGroup {NAME}: initializing record'.format(NAME=self.name))
+        logger.debug('RecordGroup {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
 
         # Set header values from required columns
         try:
@@ -1993,7 +1994,7 @@ class DatabaseRecord:
         if not record_id:
             raise ImportError('failed to initialize the record - no record ID found in the data provided')
 
-        logger.info('RecordType {NAME}: initialized record has ID {ID}'.format(NAME=self.name, ID=record_id))
+        logger.info('RecordGroup {NAME}: initialized record has ID {ID}'.format(NAME=self.name, ID=record_id))
 
         for record_element in record_elements:
             element_name = record_element.name
@@ -2012,8 +2013,11 @@ class DatabaseRecord:
                 assoc_rule = record_element.association_type
                 ref_entry = settings.records.fetch_rule(record_element.record_type)
 
-                logger.debug('RecordType {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
+                logger.debug('RecordGroup {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
                              .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
+
+                # Update the component table with parent data
+                record_element.update_parent_data(record_data)
 
                 # Attempt to add new components provided in the record data
                 if element_name in record_data:  # new components provided
@@ -2021,11 +2025,12 @@ class DatabaseRecord:
                     if isinstance(new_data, pd.DataFrame) and not new_data.empty:
                         if record_element.id_column not in new_data.columns:  # IDs not yet created for the components
                             # Create IDs and default values for the new data
-                            new_data = self.create_components(record_element, record_data=new_data)
+                            #new_data = self.create_components(record_element, record_data=new_data)
+                            new_data = record_element.create_record(data=new_data)
 
                         record_element.append(new_data, new=True)
                     else:
-                        logger.warning('RecordType {NAME}: record element {ELEM} can only accept input in the form '
+                        logger.warning('RecordGroup {NAME}: record element {ELEM} can only accept input in the form '
                                        'of a dataframe'.format(NAME=self.name, ELEM=element_name))
 
                 # Attempt to find existing components in the database
@@ -2038,13 +2043,13 @@ class DatabaseRecord:
                     ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
                 if ref_data.empty:
-                    logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
+                    logger.debug('RecordGroup {NAME}: record {ID} has no current "{TYPE}" associations'
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
                 import_ids = ref_data['ReferenceID']
 
-                # Load the component records
+                # Load any existing component records
                 elem_data = ref_entry.load_records(import_ids, filters=record_element.import_filters)
                 elem_data = elem_data[[i for i in elem_data.columns if i in record_element.columns]]
 
@@ -2053,7 +2058,7 @@ class DatabaseRecord:
             elif record_element.is_type('reference'):  # reference list or reference table
                 assoc_rule = record_element.association_type
 
-                logger.debug('RecordType {NAME}: initializing reference list "{PARAM}" with association "{TYPE}"'
+                logger.debug('RecordGroup {NAME}: initializing reference list "{PARAM}" with association "{TYPE}"'
                              .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
 
                 # Load the reference entries defined by the given association rule
@@ -2066,7 +2071,7 @@ class DatabaseRecord:
                     ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
                 if ref_data.empty:
-                    logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
+                    logger.debug('RecordGroup {NAME}: record {ID} has no current "{TYPE}" associations'
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
@@ -2076,31 +2081,32 @@ class DatabaseRecord:
                 try:
                     value = record_data[element_name]
                 except KeyError:
-                    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
+                    logger.warning('RecordGroup {NAME}: input data is missing a value for data element "{PARAM}"'
                                    .format(NAME=self.name, PARAM=element_name))
                 else:
                     if not pd.isna(value):
-                        logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
+                        logger.debug('RecordGroup {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
                                      .format(NAME=self.name, PARAM=element_name, VAL=value))
                         record_element.update_value(value)
                     else:
-                        logger.debug('RecordType {NAME}: no value set for record element "{ELEM}"'
+                        logger.debug('RecordGroup {NAME}: no value set for record element "{ELEM}"'
                                      .format(NAME=self.name, ELEM=element_name))
-                        logger.debug('RecordType {NAME}: record element {ELEM} has default value "{VAL}"'
+                        logger.debug('RecordGroup {NAME}: record element {ELEM} has default value "{VAL}"'
                                      .format(NAME=self.name, ELEM=element_name, VAL=record_element.data()))
 
         # Update any dependent record elements
         record_values = self.export_values(header=False).to_dict()
         try:
-            element_references = self.fetch_element('dependent', by_type=True)
+            #dependent_elements = self.fetch_element('dependent', by_type=True)
+            dependent_elements = [i for i in record_elements if i.is_type('dependent')]
         except KeyError:
             pass
         else:
-            for record_element in element_references:
+            for record_element in dependent_elements:
                 try:
                     record_element.format_value(record_values)
                 except Exception as e:
-                    logger.warning('RecordType {NAME}: failed to set the value for dependent variable {ELEM} - {ERR}'
+                    logger.warning('RecordGroup {NAME}: failed to set the value for dependent variable {ELEM} - {ERR}'
                                    .format(NAME=self.name, ELEM=record_element.name, ERR=e))
 
     def reset(self, window):
@@ -2168,7 +2174,8 @@ class DatabaseRecord:
 
             by_type (bool): fetch record elements by element type [Default: False].
         """
-        elements = self.components + self.blanks
+        elements = self.record_elements()
+        elements.extend(self.blanks)
 
         if by_key is True:
             # Remove any binding strings and get last component of element key
@@ -2266,32 +2273,7 @@ class DatabaseRecord:
 
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
-            if record_element.is_type('component'):
-                try:
-                    add_bttn = record_element.fetch_parameter('Add', filters=False)
-                    add_key, add_hkey = add_bttn.key_lookup()
-                except KeyError:
-                    add_key = add_hkey = None
-
-                if event in (add_key, add_hkey):
-                    # Close options panel, if open
-                    record_element.set_table_dimensions(window)
-
-                    try:
-                        record_data = self.create_components(record_element)
-                    except Exception as e:
-                        msg = ''
-                        logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                        mod_win2.popup_error(msg)
-                    else:
-                        record_created = record_element.add_record(record_data)
-                        if record_created:
-                            triggers['ValueEvent'] = True
-                            record_element.update_display(window)
-                else:
-                    triggers = record_element.run_event(window, event, values)
-            else:
-                triggers = record_element.run_event(window, event, values)
+            triggers = record_element.run_event(window, event, values)
 
         if triggers['DisplayEvent']:
             self.update_display(window)
@@ -2321,6 +2303,7 @@ class DatabaseRecord:
         Update the record display.
         """
         record_id = self.record_id()
+        display_elements = self.display_elements()
 
         # Update any dependent record elements first
         record_values = self.export_values(header=False)
@@ -2339,7 +2322,7 @@ class DatabaseRecord:
 
         # Update the record elements
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
-        for record_element in self.display_elements():
+        for record_element in display_elements:
             record_element.update_display(window)
 
         self.resize(window, size=size)
@@ -2541,7 +2524,8 @@ class DatabaseRecord:
             if association_rule and association_rule != comp_rule:
                 continue
 
-            data = comp_tbl.export_references(self.record_id())
+            #data = comp_tbl.export_references(self.record_id())
+            data = comp_tbl.export_references()
             ref_df = ref_df.append(data, ignore_index=True)
 
         return ref_df
@@ -2735,11 +2719,13 @@ class DatabaseRecord:
                 logger.debug('Record {ID}: preparing export statements for all components in component table "{COMP}"'
                              .format(ID=record_id, COMP=element_name))
                 exist_df = comp_table.data()
-                ref_data = comp_table.export_references(record_id)
+                #ref_data = comp_table.export_references(record_id)
+                ref_data = comp_table.export_references()
             else:
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
                              'table {COMP}'.format(ID=record_id, COMP=element_name))
-                ref_data = comp_table.export_references(record_id, edited_only=True)
+                #ref_data = comp_table.export_references(record_id, edited_only=True)
+                ref_data = comp_table.export_references(edited_only=True)
                 exist_df = comp_table.data(edited_rows=True, added_rows=True)
 
             deleted_df = comp_table.data(deleted_rows=True, added_rows=False)  # existing deleted only
