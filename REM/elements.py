@@ -188,8 +188,10 @@ class RecordElement:
         map = {'table': ['collection', 'table', 'data_table'],
                'data_table': ['collection', 'table', 'data_table'],
                'component': ['collection', 'table', 'association', 'component', 'component_table'],
+               'association_table': ['collection', 'table', 'association', 'association_table'],
+               'reference_table': ['collection', 'table', 'association', 'reference', 'reference_table'],
                'list': ['collection', 'list', 'data_list'],
-               'reference': ['collection', 'list', 'association', 'reference', 'reference_list'],
+               'reference_list': ['collection', 'list', 'association', 'reference', 'reference_list'],
                'text': ['variable', 'data_variable', 'record_variable', 'text', 'text_variable'],
                'input': ['variable', 'data_variable', 'record_variable', 'input', 'input_variable', 'date',
                          'date_variable'],
@@ -541,7 +543,7 @@ class DataTable(RecordElement):
         self._colors = []
 
     def _data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = None,
-              deleted_rows: bool = False, added_rows: bool = None, indices=None):
+              deleted_rows: bool = False, added_rows: bool = None, indices=None, **kwargs):
         """
         Return the collection data.
 
@@ -594,7 +596,7 @@ class DataTable(RecordElement):
             #df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
             #                     added_only=added_rows, indices=indices)
             deleted = None if all_rows else deleted_rows
-            df = collection.data(edited=edited_rows, deleted=deleted, added=added_rows, indices=indices)
+            df = collection.data(edited=edited_rows, deleted=deleted, added=added_rows, indices=indices, **kwargs)
 
         return df
 
@@ -1666,6 +1668,8 @@ class DataTable(RecordElement):
 
         # Table header
         title_bar = []
+
+        # Header search bar
         if modifiers['search'] and search_field is not None:
             search_layout = sg.Frame('', [
                 [sg.Image(data=mod_const.SEARCH_ICON, background_color=row_col, pad=((0, pad_h), 0)),
@@ -1679,12 +1683,24 @@ class DataTable(RecordElement):
         title_bar.append(search_layout)
         title_bar.append(sg.Push(background_color=header_col))
 
+        # Header title
+        title_layout = []
+        icon = self.icon
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                title_layout.append(sg.Image(filename=icon_path, pad=(pad_el, 0), background_color=header_col,
+                                             expand_y=True))
+
         if table_name is not None:
+            title_layout.append(sg.Text(table_name, font=title_font, background_color=header_col))
+
+        if len(title_layout) > 0:
             title_bar.append(sg.Push(background_color=header_col))
-            title_layout = sg.Text(table_name, font=title_font, background_color=header_col)
-            title_bar.append(title_layout)
+            title_bar.append(sg.Col([title_layout], background_color=header_col, vertical_alignment='c'))
             title_bar.append(sg.Push(background_color=header_col))
 
+        # Header options button
         if any([modifiers['fill'], modifiers['sort'], modifiers['export']]):
             options_layout = sg.Frame('', [
                 [sg.Button('', key=options_key, image_data=mod_const.SETTINGS_ICON, border_width=0,
@@ -2201,6 +2217,149 @@ class DataTable(RecordElement):
         return edited
 
 
+class ReferenceTable(DataTable):
+    """
+    Subclass of the data table, but for record references.
+
+    Attributes:
+        name (str): table element configuration name.
+
+        elements (list): list of table element keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize reference table attributes.
+
+        Arguments:
+            name (str): name of the configured table element.
+
+            entry (dict): configuration entry for the table element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.etype = 'reference_table'
+
+        try:
+            self.collection = mod_col.ReferenceCollection(name, entry)
+        except Exception as e:
+            msg = self.format_log('failed to initialize the collection', err=e)
+            raise AttributeError(msg)
+
+        # Control flags that modify the table's behaviour
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False, 'unassociated': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0),
+                              'unassociated': modifiers.get('unassociated', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
+        association_type = entry.get('AssociationType', entry.get('AssociationRule', None))
+        if association_type is None:
+            msg = 'missing required parameter "AssociationType"'
+            logger.error(self.format_log(msg))
+
+            raise AttributeError(msg)
+        else:
+            self.association_type = association_type
+
+    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = None,
+             deleted_rows: bool = False, added_rows: bool = None, indices=None, reverse: bool = False):
+        """
+        Return the collection data.
+
+        Arguments:
+            all_rows (bool): return all table rows, including the deleted rows [Default: False].
+
+            display_rows (bool): return only the display rows [Default: False].
+
+            edited_rows (bool): filter rows on edited state [Default: None - don't filter on edited state].
+
+            deleted_rows (bool): filter rows on deleted state [Default: False - don't include deleted rows].
+
+            added_rows (bool): filter rows on added state [Default: None - don't filter on added state].
+
+            indices: list or series of table indices.
+
+            reverse (bool): reverse the record and reference columns [Default: False]
+
+        Returns:
+            df (DataFrame): table data matching the selection requirements.
+        """
+        df = self._data(all_rows=all_rows, display_rows=display_rows, edited_rows=edited_rows,
+                        deleted_rows=deleted_rows, added_rows=added_rows, indices=indices, reference=reverse)
+
+        return df
+
+    def load_record(self, index, level: int = None):
+        """
+        Load the reference record from the database.
+
+        Arguments:
+            index (int): index of the record to load.
+
+            level (int): load the referenced record at the given depth [Default: current level + 1].
+
+        Returns:
+            record (DatabaseRecord): initialized database record.
+        """
+        ref_data = self.collection.data(indices=[index]).squeeze()
+        ref_type = ref_data['ReferenceType']
+        record_entry = settings.records.fetch_rule(ref_type)
+        record_class = mod_records.DatabaseRecord
+
+        ref_id = ref_data['ReferenceID']
+
+        level = level if level is not None else self.level + 1
+        logger.info(self.format_log('loading reference record {ID} of type {TYPE} at level {LEVEL}'
+                                    .format(ID=ref_id, TYPE=ref_type, LEVEL=level)))
+
+        imports = record_entry.load_records(ref_id, import_rules=False)
+        nrow = imports.shape[0]
+
+        if nrow < 1:
+            logger.warning(self.format_log('record reference {REF} not found in the database'.format(REF=ref_id)))
+            record_data = imports
+        elif nrow == 1:
+            record_data = imports.iloc[0]
+        else:
+            logger.warning(self.format_log('more than one database entry found for record reference {REF}'
+                                           .format(REF=ref_id)))
+            record_data = imports.iloc[0]
+
+        record = record_class(record_entry.name, record_entry.record_layout, level=level)
+        record.initialize(record_data, new=False)
+
+        return record
+
+    def run_table_event(self, index):
+        """
+        Run a table action event.
+        """
+        logger.debug(self.format_log('opening record at table index {IND}'.format(IND=index)))
+        record = self.load_record(index)
+
+        # Display the record window
+        mod_win2.record_window(record, view_only=True)
+
+        return False
+
+
 class RecordTable(DataTable):
     """
     Record tables are a subclass of the data table, but specifically for storing record data. Record tables provide
@@ -2551,13 +2710,14 @@ class ComponentTable(RecordTable):
 
                 self.modifiers[modifier] = flag
 
-        try:
-            self.association_rule = entry['AssociationRule']
-        except KeyError:
-            msg = 'missing required parameter "AssociationRule"'
+        association_type = entry.get('AssociationType', entry.get('AssociationRule', None))
+        if association_type is None:
+            msg = 'missing required parameter "AssociationType"'
             logger.error(self.format_log(msg))
 
             raise AttributeError(msg)
+        else:
+            self.association_type = association_type
 
     def import_rows(self, import_df: pd.DataFrame = None):
         """
@@ -2593,7 +2753,7 @@ class ComponentTable(RecordTable):
         # Search for records without an existing reference to the provided reference type
         if modifiers['unassociated']:
             record_entry = settings.records.fetch_rule(record_type)
-            rule_name = self.association_rule
+            rule_name = self.association_type
 
             logger.debug(self.format_log('importing unreferenced records on rule "{RULE}"'.format(RULE=rule_name)))
 
@@ -2681,7 +2841,7 @@ class ComponentTable(RecordTable):
         return ref_df
 
 
-class ReferenceTable(RecordTable):
+class AssociationTable(RecordTable):
     """
     Subclass of the records table, but for records with associated reference.
 
@@ -2727,13 +2887,14 @@ class ReferenceTable(RecordTable):
 
                 self.modifiers[modifier] = flag
 
-        try:
-            self.association_type = entry['AssociationType']
-        except KeyError:
+        association_type = entry.get('AssociationType', entry.get('AssociationRule', None))
+        if association_type is None:
             msg = 'missing required parameter "AssociationType"'
             logger.error(self.format_log(msg))
 
             raise AttributeError(msg)
+        else:
+            self.association_type = association_type
 
         self.references = mod_col.ReferenceCollection(self.name, entry)
 
@@ -2875,7 +3036,7 @@ class ReferenceTable(RecordTable):
                         'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
                         }
 
-        import_table = ReferenceTable(self.name, table_layout)
+        import_table = AssociationTable(self.name, table_layout)
         import_table.append(import_df)
         import_table.import_references()
 
@@ -4070,7 +4231,7 @@ class ReferenceList(DataList):
 
         elements (list): list of element GUI keys.
 
-        association_rule (str): name of the association rule connecting the associated records.
+        association_type (str): name of the association rule connecting the associated records.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4085,7 +4246,7 @@ class ReferenceList(DataList):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
-        self.etype = 'reference'
+        self.etype = 'reference_list'
 
         try:
             self.collection = mod_col.ReferenceCollection(name, entry)
@@ -4123,13 +4284,14 @@ class ReferenceList(DataList):
                                       .format(FIELD=ref_type_field))
                 raise AttributeError(msg)
 
-        try:
-            self.association_rule = entry['AssociationRule']
-        except KeyError:
-            msg = self.format_log('missing required parameter "AssociationRule"')
-            logger.error(msg)
+        association_type = entry.get('AssociationType', entry.get('AssociationRule', None))
+        if association_type is None:
+            msg = 'missing required parameter "AssociationType"'
+            logger.error(self.format_log(msg))
 
             raise AttributeError(msg)
+        else:
+            self.association_type = association_type
 
         try:
             self.import_filters = entry['ImportFilters']
@@ -4152,10 +4314,11 @@ class ReferenceList(DataList):
         """
         Add new entries through the data import window.
         """
-        rule_name = self.association_rule
+        rule_name = self.association_type
         collection = self.collection
         id_col = self._header_field
-        df = collection.data(current=False)  # all entries in the collection
+        #df = collection.data(current=False)  # all entries in the collection
+        df = collection.data(deleted=None)  # all entries in the collection
         ref_field = self._ref_type_field
 
         if not ref_field:
@@ -4215,7 +4378,8 @@ class ReferenceList(DataList):
         # pd.set_option('display.max_columns', None)
         collection = self.collection
         id_col = self._header_field
-        ref_df = collection.data(current=False)  # all entries in the collection
+        #ref_df = collection.data(current=False)  # all entries in the collection
+        ref_df = collection.data(deleted=False)  # all entries in the collection
         display_columns = {**{self._header_field: self.description}, **self.display_columns}
 
         table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
@@ -4227,7 +4391,8 @@ class ReferenceList(DataList):
 
         # Add entries that were deleted in the record window to the import set
         if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)  # only deleted entries in the collection
+            #import_df = collection.data(current=False, deleted_only=True)  # only deleted entries in the collection
+            import_df = collection.data(deleted=True)  # only deleted entries in the collection
 
         import_table.append(import_df, reindex=False)
 
@@ -4235,7 +4400,7 @@ class ReferenceList(DataList):
         if self._type_field and not ref_df.empty:
             record_type = ref_df[self._type_field].unique().squeeze()
             record_entry = settings.records.fetch_rule(record_type)
-            db_df = record_entry.import_references(ref_df[id_col], rule=self.association_rule, include_deleted=True)
+            db_df = record_entry.import_references(ref_df[id_col], rule=self.association_type, include_deleted=True)
 
             # Subset on table columns
             db_df = db_df[[i for i in db_df.columns.values if i in import_df.columns]]
