@@ -378,7 +378,6 @@ class DataCollection:
                         values = pd.Series(default_value, index=df.index)
 
                     default_rule = column_default[default_value]
-                    #results = mod_dm.evaluate_condition_set(df, {default_value: default_rule})
                     results = mod_dm.evaluate_condition(df, default_rule)
                     for index in results[results].index:  # only "passing", or true, indices
                         default_values[index] = values[index]
@@ -745,10 +744,7 @@ class DataCollection:
         """
         dtypes = self.dtypes
 
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df if inplace else self.df.copy()
 
         if isinstance(indices, list):
             merge_inds = indices
@@ -783,10 +779,7 @@ class DataCollection:
 
             inplace (bool): delete data in place [Default: True].
         """
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df if inplace else self.df.copy()
 
         if isinstance(indices, str):
             indices = [indices]
@@ -842,10 +835,7 @@ class DataCollection:
         except KeyError:
             raise KeyError('field must be one of {}'.format(list(state_fields)))
 
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df if inplace else self.df.copy()
 
         if indices is None:
             indices = df.index
@@ -858,11 +848,7 @@ class DataCollection:
         """
         Format the table values for display.
         """
-        if indices is not None:
-            #df = self.data(current=False, indices=indices)
-            df = self.data(indices=indices)
-        else:
-            df = self.data()
+        df = self.data(indices=indices)
 
         # Subset dataframe by specified columns to display
         display_df = pd.DataFrame()
@@ -896,11 +882,6 @@ class DataCollection:
         is_string_dtype = pd.api.types.is_string_dtype
 
         aliases = self.aliases
-
-        #if data is None:
-        #    df = self.data()
-        #else:
-        #    df = data
 
         df = data if isinstance(data, pd.DataFrame) else self.data()
 
@@ -946,11 +927,6 @@ class DataCollection:
                 .format(STAT=statistic, COL=field)
             logger.warning('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             statistic = None
-
-        #if indices:
-        #    df = self.data(current=False, indices=indices)
-        #else:
-        #    df = self.data()
 
         df = self.data(indices=indices)
 
@@ -1032,7 +1008,8 @@ class DataCollection:
             return False
 
         for field in fields:
-            column_index = self.df.columns.get_loc(field)
+            #column_index = self.df.columns.get_loc(field)
+            column_index = df.columns.get_loc(field)
             try:
                 df.loc[indices, column_index] = df.loc[indices, column_index].fillna(method=method)
             except IndexError:
@@ -1058,10 +1035,7 @@ class DataCollection:
 
             inplace (bool): sort collection data in-place [Default: True].
         """
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df if inplace else self.df.copy()
 
         if df.empty:
             return df
@@ -1237,10 +1211,7 @@ class DataCollection:
         """
         Transform a field's values.
         """
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df if inplace else self.df.copy()
 
         if value is not None:
             math_operators = ('+', '-', '*', '/', '%')
@@ -1320,10 +1291,7 @@ class RecordCollection(DataCollection):
         """
         dtypes = self.dtypes
 
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df if inplace else self.df.copy()
 
         if isinstance(indices, list):
             merge_inds = indices

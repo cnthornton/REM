@@ -2009,7 +2009,7 @@ class DatabaseRecord:
                 record_element.append(element_data)
 
             elif record_element.is_type('component'):  # component table
-                assoc_rule = record_element.association_rule
+                assoc_rule = record_element.association_type
                 ref_entry = settings.records.fetch_rule(record_element.record_type)
 
                 logger.debug('RecordType {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
@@ -2050,8 +2050,8 @@ class DatabaseRecord:
 
                 record_element.append(elem_data, new=False)
 
-            elif record_element.is_type('reference'):  # reference list
-                assoc_rule = record_element.association_rule
+            elif record_element.is_type('reference'):  # reference list or reference table
+                assoc_rule = record_element.association_type
 
                 logger.debug('RecordType {NAME}: initializing reference list "{PARAM}" with association "{TYPE}"'
                              .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
@@ -2254,7 +2254,7 @@ class DatabaseRecord:
             else:  # edited element is still in focus
                 break
 
-        # Get relevant record element
+        # Run a record element event
         if event in elem_events:
             try:
                 record_element = self.fetch_element(event, by_key=True)
@@ -2263,11 +2263,7 @@ class DatabaseRecord:
                              .format(ID=self.record_id(), KEY=event, ERR=e))
 
                 return False
-        else:
-            record_element = None
 
-        # Run a record element event
-        if record_element is not None:
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
             if record_element.is_type('component'):
@@ -2310,7 +2306,8 @@ class DatabaseRecord:
             # Update any element references with new values
             record_values = self.export_values(header=False)
             try:
-                element_references = self.fetch_element('dependent', by_type=True)
+                #element_references = self.fetch_element('dependent', by_type=True)
+                element_references = [i for i in record_elements if i.is_type('dependent')]
             except KeyError:
                 pass
             else:
@@ -2519,26 +2516,28 @@ class DatabaseRecord:
                                        'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
                                        'IsDeleted'])
 
-        try:
-            refbox_elements = self.fetch_element('reference', by_type=True)
-        except KeyError:
-            refbox_elements = []
+        record_elements = self.record_elements()
 
-        for refbox in refbox_elements:
-            refbox_rule = refbox.association_rule
-            if association_rule and association_rule != refbox_rule:
+        #try:
+        #    refbox_elements = self.fetch_element('reference', by_type=True)
+        #except KeyError:
+        #    refbox_elements = []
+        ref_elements = [i for i in record_elements if i.is_type('reference')]
+        for ref_element in ref_elements:
+            ref_rule = ref_element.association_type
+            if association_rule and (association_rule != ref_rule):
                 continue
 
-            data = refbox.data()
+            data = ref_element.data()
             ref_df = ref_df.append(data, ignore_index=True)
 
-        try:
-            comp_elements = self.fetch_element('components', by_type=True)
-        except KeyError:
-            comp_elements = []
-
+        #try:
+        #    comp_elements = self.fetch_element('components', by_type=True)
+        #except KeyError:
+        #    comp_elements = []
+        comp_elements = [i for i in record_elements if i.is_type('component')]
         for comp_tbl in comp_elements:
-            comp_rule = comp_tbl.association_rule
+            comp_rule = comp_tbl.association_type
             if association_rule and association_rule != comp_rule:
                 continue
 
@@ -2668,6 +2667,7 @@ class DatabaseRecord:
 
         record_id = self.record_id()
         record_entry = settings.records.fetch_rule(self.name)
+        record_elements = self.record_elements()
 
         # Verify that required parameters have values
         can_continue = self.check_required_parameters()
@@ -2693,48 +2693,52 @@ class DatabaseRecord:
             del record_data
 
         # Prepare to save record references
-        try:
-            refbox_elements = self.fetch_element('reference', by_type=True)
-        except KeyError:
-            refbox_elements = []
-
-        for refbox in refbox_elements:
-            association_rule = refbox.association_rule
+        #try:
+        #    ref_elements = self.fetch_element('reference', by_type=True)
+        #except KeyError:
+        #    ref_elements = []
+        ref_elements = [i for i in record_elements if i.is_type('reference')]
+        for ref_element in ref_elements:
+            element_name = ref_element.name
+            print('Saving references from record element {}'.format(element_name))
+            association_rule = ref_element.association_type
 
             if self.new or save_all:  # export all reference entries if record is new or if indicated to do so
-                logger.debug('Record {ID}: preparing export statements for all "{ASSOC}" references'
-                             .format(ID=record_id, ASSOC=association_rule))
-                ref_data = refbox.data()
+                logger.debug('Record {ID}: preparing export statements for all "{ASSOC}" references in {REF}'
+                             .format(ID=record_id, ASSOC=association_rule, REF=element_name))
+                ref_data = ref_element.data()
             else:  # export only the added or edited reference entries
-                logger.debug('Record {ID}: preparing export statements for edited or new "{ASSOC}" references'
-                             .format(ID=record_id, ASSOC=association_rule))
-                ref_data = refbox.data(edited_rows=True, added_rows=True)  # edited or added
+                logger.debug('Record {ID}: preparing export statements for edited or new "{ASSOC}" references in {REF}'
+                             .format(ID=record_id, ASSOC=association_rule, REF=element_name))
+                ref_data = ref_element.data(edited_rows=True, added_rows=True)  # edited or added
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
-            logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
-                         .format(ID=record_id, ASSOC=association_rule))
-            deleted_df = refbox.data(deleted_rows=True, added_rows=False)  # existing deleted only
+            logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references in {REF}'
+                         .format(ID=record_id, ASSOC=association_rule, REF=element_name))
+            deleted_df = ref_element.data(deleted_rows=True, added_rows=False)  # existing deleted only
             if not deleted_df.empty:
                 statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
-        try:
-            component_tables = self.fetch_element('component', by_type=True)
-        except KeyError:
-            component_tables = []
-
+        #try:
+        #    component_tables = self.fetch_element('component', by_type=True)
+        #except KeyError:
+        #    component_tables = []
+        component_tables = [i for i in record_elements if i.is_type('component')]
         for comp_table in component_tables:
+            element_name = comp_table.name
             comp_type = comp_table.record_type
+
             comp_entry = settings.records.fetch_rule(comp_type)
 
             if self.new or save_all:
                 logger.debug('Record {ID}: preparing export statements for all components in component table "{COMP}"'
-                             .format(ID=record_id, COMP=comp_table.name))
+                             .format(ID=record_id, COMP=element_name))
                 exist_df = comp_table.data()
                 ref_data = comp_table.export_references(record_id)
             else:
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
-                             'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
+                             'table {COMP}'.format(ID=record_id, COMP=element_name))
                 ref_data = comp_table.export_references(record_id, edited_only=True)
                 exist_df = comp_table.data(edited_rows=True, added_rows=True)
 
@@ -2742,13 +2746,13 @@ class DatabaseRecord:
 
             if deleted_df.empty and exist_df.empty:
                 logger.debug('Record {ID}: no components in component table {COMP} available to export'
-                             .format(ID=record_id, COMP=comp_table.name))
+                             .format(ID=record_id, COMP=element_name))
                 continue
 
             logger.debug('Record {ID}: preparing statements for component table "{TBL}"'
-                         .format(ID=record_id, TBL=comp_table.name))
+                         .format(ID=record_id, TBL=element_name))
 
-            assoc_rule_name = comp_table.association_rule
+            assoc_rule_name = comp_table.association_type
             assoc_rule = comp_entry.association_rules.get(assoc_rule_name)
             if assoc_rule['AssociationType'] == 'child':  # component records are a child records
                 # Fully remove deleted component records if parent-child relationship
@@ -3424,6 +3428,10 @@ def initialize_element(parent, name, entry):
         element_class = mod_elem.DataTable
     elif etype in ('component_table', 'components'):
         element_class = mod_elem.ComponentTable
+    elif etype in ('association_table',):
+        element_class = mod_elem.AssociationTable
+    elif etype in ('reference_table',):
+        element_class = mod_elem.ReferenceTable
     elif etype in ('data_list', 'list'):
         element_class = mod_elem.DataList
     elif etype in ('reference_list', 'reference'):

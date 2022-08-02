@@ -1995,11 +1995,11 @@ def import_window(table, params: list = None):
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    bttn_text_col = mod_const.WHITE_TEXT_COLOR
-    bttn_bg_col = mod_const.BUTTON_BG_COLOR
+    #bttn_text_col = mod_const.WHITE_TEXT_COLOR
+    #bttn_bg_col = mod_const.BUTTON_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     header_col = mod_const.HEADER_COLOR
-    border_color = mod_const.BORDER_COLOR
+    #border_color = mod_const.BORDER_COLOR
 
     tbl_pad = pad_frame * 2  # padding on both sides of the table
 
@@ -2071,6 +2071,11 @@ def import_window(table, params: list = None):
     # Start event loop
     table.update_display(window)
 
+    param_keys = []
+    for parameter in params:
+        parameter.bind_keys(window)
+        param_keys.extend(list(parameter.bindings))
+
     select_index = []
     while True:
         event, values = window.read(timeout=500)
@@ -2115,6 +2120,10 @@ def import_window(table, params: list = None):
             table.run_event(window, event, values)
 
             continue
+
+        if event in param_keys:
+            parameter = mod_param.fetch_parameter(params, event, by_key=True)
+            parameter.run_event(window, event, values)
 
     window.close()
     layout = None

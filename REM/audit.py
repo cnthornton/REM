@@ -1148,7 +1148,7 @@ class AuditTransaction:
 
         try:
             #self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
-            self.table = mod_elem.ReferenceTable(name, entry['DisplayTable'])
+            self.table = mod_elem.AssociationTable(name, entry['DisplayTable'])
         except Exception as e:
             msg = 'failed to initialize the transaction table - {ERR}'.format(ERR=e)
             logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
