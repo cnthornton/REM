@@ -1995,11 +1995,8 @@ def import_window(table, params: list = None):
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    #bttn_text_col = mod_const.WHITE_TEXT_COLOR
-    #bttn_bg_col = mod_const.BUTTON_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     header_col = mod_const.HEADER_COLOR
-    #border_color = mod_const.BORDER_COLOR
 
     tbl_pad = pad_frame * 2  # padding on both sides of the table
 
@@ -2017,7 +2014,6 @@ def import_window(table, params: list = None):
 
     if len(param_layout) > 0:
         search_key = '-FIND-'
-        #search_bttn = sg.vbottom(mod_lo.search_button(key=search_key, disabled=(not enable_search)))
         search_bttn = sg.vbottom(mod_lo.button_layout(search_key, icon=mod_const.BTTN_SEARCH_ICON,
                                                       disabled=(not enable_search)))
         param_layout.append(search_bttn)
@@ -2028,12 +2024,6 @@ def import_window(table, params: list = None):
         top_layout = [[]]
 
     bttn_h = mod_const.BTTN_ROW_HEIGHT
-    #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-    #                sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          pad=(pad_el, 0), tooltip='Cancel importing'),
-    #                sg.Button('', key='-IMPORT-', image_data=mod_const.DB_IMPORT_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          pad=(pad_el, 0), tooltip='Import the selected transaction orders')]]
-
     bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
                     mod_lo.button_layout('-CANCEL-', icon=mod_const.BTTN_CANCEL_ICON, pad=(pad_el, 0),
                                          tooltip='Cancel importing'),
@@ -2095,6 +2085,15 @@ def import_window(table, params: list = None):
             current_w, current_h = (win_w, win_h)
 
         if event == '-FIND-':  # click the find button to query database
+            has_values = []
+            for parameter in params:
+                parameter.format_value(values)
+                has_values.append(parameter.has_value())
+
+            if not any(has_values):  # no search criteria provided
+                popup_notice('no search criteria was provided')
+                continue
+
             try:
                 record_df = record_entry.import_records(filter_params=params, import_rules=import_rules)
             except Exception as e:
