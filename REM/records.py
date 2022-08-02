@@ -2148,13 +2148,13 @@ class DatabaseRecord:
             unsaved_ids = comp_entry.get_unsaved_ids()
 
             ids_to_remove = []
-            comp_ids = record_element.row_ids()
+            comp_ids = record_element.row_ids(deleted=True)
             for row_id in comp_ids:
                 if row_id in unsaved_ids:  # don't attempt to remove IDs if already in the database
                     ids_to_remove.append(row_id)
 
-            logger.debug('RecordType {NAME}: removing unsaved component IDs {IDS}'
-                         .format(NAME=self.name, IDS=ids_to_remove))
+            logger.debug('RecordGroup {NAME}: removing unsaved component {COMP} IDs {IDS}'
+                         .format(NAME=self.name, COMP=record_element.name, IDS=ids_to_remove))
             comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
 
     def fetch_element(self, identifier, by_key: bool = False, by_type: bool = False):

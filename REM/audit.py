@@ -417,16 +417,6 @@ class AuditRule:
                             .format(NAME=self.name, PARAMS=param_str))
                 self.in_progress = True
 
-                #for transaction_tab in transactions:
-                    # Enable table element events
-                #    transaction_tab.table.enable(window)
-
-                    # Update the tab table display
-                #    transaction_tab.table.update_display(window)
-
-                    # Update tab ID components
-                #    transaction_tab.update_id_components()
-
                 self.set_tab_focus(window)
 
         # Save results of the audit

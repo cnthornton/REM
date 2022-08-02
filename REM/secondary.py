@@ -308,17 +308,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     # Button layout
     bttn_h = mod_const.BTTN_ROW_HEIGHT
-    #bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-    #                sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          pad=(pad_el, 0), visible=can_delete,
-    #                          tooltip='Delete the record from the database'),
-    #                sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          pad=(pad_el, 0), visible=can_accept,
-    #                          tooltip='Accept changes to the record'),
-    #                sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-    #                          pad=(pad_el, 0), visible=can_save,
-    #                          tooltip='Save record changes to the database')]]
-
     bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
                     mod_lo.button_layout('-DELETE-', icon=mod_const.BTTN_DELETE_ICON, pad=(pad_el, 0),
                                          visible=can_delete, tooltip='Delete record from the database'),
@@ -363,7 +352,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     record_w = win_w if win_w >= min_w else min_w
     record_h = win_h - bffr_h if win_h >= min_h else min_h
-    # record.resize(window, size=(record_w, record_h))
 
     record.update_display(window, size=(record_w, record_h))
 
