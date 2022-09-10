@@ -60,6 +60,7 @@ def format_value(value, dtype, date_format: str = None):
 
         date_format (str): formatted date string to use instead of the program default.
     """
+    print(value)
     if dtype in ('date', 'datetime', 'timestamp', 'time'):
         dt = settings.date_format if date_format is None else date_format
         value = np.datetime64(pd.to_datetime(value, format=dt, utc=False))
@@ -353,8 +354,8 @@ def parse_expression(expression):
     expression = re.sub(r'"|\'', '', expression)
 
     # Ensure that any boolean word operators are lowercase (pandas requirement)
-    bool_pttrn = ' | '.join(map(re.escape, ('and', 'or', 'not', 'in')))
-    expression = re.sub(bool_pttrn, lambda match: match.group(0).lower(), expression, flags=re.IGNORECASE)
+    bool_pttrn = '|'.join(map(re.escape, ('and', 'or', 'not', 'in')))
+    expression = re.sub(bool_pttrn, lambda match: match.group().lower(), expression, flags=re.IGNORECASE)
 
     # Separate the different components of the expression
     parsed_expression = []
