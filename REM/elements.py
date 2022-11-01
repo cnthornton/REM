@@ -1488,15 +1488,15 @@ class DataTable(RecordElement):
         if df.empty or rules is None:
             return {}
 
-        logger.debug(self.format_log('annotating display table on configured annotation rules'))
+        logger.info(self.format_log('annotating display table on configured annotation rules'))
 
         annotations = {}
         rows_annotated = []
         for annot_code in rules:
-            logger.debug(self.format_log('annotating table based on configured annotation rule "{CODE}"'
-                                         .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
+            logger.debug(self.format_log('annotating table based on configured annotation rule "{CODE}" with '
+                                         'conditions "{COND}"'.format(CODE=annot_code, COND=annot_condition)))
             try:
                 # results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
                 results = mod_dm.evaluate_condition(df, annot_condition)

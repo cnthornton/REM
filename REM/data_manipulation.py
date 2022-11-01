@@ -225,6 +225,7 @@ def evaluate_condition(data, expression):
     else:
         raise ValueError('expression {} must be provided as either a string or list'.format(expression))
 
+    logger.debug('creating evaluation expression from components: {}'.format(components))
     if len(components) > 1:
         # Quote non-numeric, static expression variables
         exp_comps = []
@@ -248,23 +249,27 @@ def evaluate_condition(data, expression):
             exp_comps.append(exp_comp)
 
         expression = ' '.join(exp_comps)
+        logger.info('evaluating conditional on expression {}'.format(expression))
         try:
             df_match = df.eval(expression)
         except ValueError:
-            print(expression)
             print(df)
             print(df.dtypes)
 
             raise
     else:  # component is a single static value or column values
         expression = ' '.join(components)
+        logger.info('evaluating conditional on expression {}'.format(expression))
         if expression in header:
             values = df[expression]
             if is_bool_dtype(values.dtype):
+                logger.debug('conditional expression is a header column with a boolean data type')
                 df_match = values
             else:
+                logger.debug('conditional expression is a header column with a non-boolean data type')
                 df_match = ~ values.isna()
         else:
+            logger.debug('conditional expression is a static value')
             df_match = df.eval(expression)
 
     if not isinstance(df_match, pd.Series):
@@ -309,6 +314,7 @@ def evaluate_operation(data, expression):
     else:
         components = parse_expression(str(expression))
 
+    logger.debug('creating evaluation expression from components: {}'.format(components))
     if len(components) > 1:
         exp_comps = []
         for component in components:
@@ -328,14 +334,18 @@ def evaluate_operation(data, expression):
 
             exp_comps.append(exp_comp)
 
-        expression = ' '.join(exp_comps)
-        results = df.eval(expression).squeeze()
+        exp_str = ' '.join(exp_comps)
+        logger.info('evaluating operation on expression {}'.format(exp_str))
+        results = df.eval(exp_str).squeeze()
     else:  # results are a single static value or the values of a column in the dataframe
-        expression = ' '.join(components)
-        if expression in header:
-            results = df[expression].squeeze()
+        exp_str = ' '.join(components)
+        logger.info('evaluating operation on expression {}'.format(exp_str))
+        if exp_str in header:
+            logger.debug('expression is a header column')
+            results = df[exp_str].squeeze()
         else:
-            results = expression
+            logger.debug('expression is a constant')
+            results = exp_str
 
     return results
 
@@ -354,7 +364,8 @@ def parse_expression(expression):
     expression = re.sub(r'"|\'', '', expression)
 
     # Ensure that any boolean word operators are lowercase (pandas requirement)
-    bool_pttrn = '|'.join(map(re.escape, ('and', 'or', 'not', 'in')))
+    #bool_pttrn = '|'.join(map(re.escape, ('and', 'or', 'not', 'in')))
+    bool_pttrn = '|'.join(map(re.escape, (' and ', ' or ', ' not ', ' in ')))
     expression = re.sub(bool_pttrn, lambda match: match.group().lower(), expression, flags=re.IGNORECASE)
 
     # Separate the different components of the expression
