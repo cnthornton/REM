@@ -84,27 +84,6 @@ class AuditRule:
                                 'edit': permissions.get('Edit', None),
                                 }
 
-        # self.parameters = []
-        # try:
-        #    params = entry['RuleParameters']
-        # except KeyError:
-        #    msg = 'missing required parameter "RuleParameters"'
-        #    logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-        #    raise AttributeError(msg)
-
-        # for param_name in params:
-        #    param_entry = params[param_name]
-        #    try:
-        #        param = mod_param.initialize_parameter(param_name, param_entry)
-        #    except Exception as e:
-        #        logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-
-        #        raise AttributeError(e)
-
-        #    self.parameters.append(param)
-        #    self.bindings.update(param.bindings)
-
         self.parameters = []
         try:
             self._param_def = entry['RuleParameters']
@@ -392,9 +371,9 @@ class AuditRule:
                     tab_key = transaction_tab.key_lookup('Tab')
                     tab_keys.append(tab_key)
 
-                    # Import transaction data from the database
+                    # Initialize the transactions table
                     try:
-                        transaction_tab.load_data(params, audit_id=record_id)
+                        transaction_tab.initialize(params, audit_id=record_id)
                     except ImportError as e:
                         msg = 'failed to initialize the audit transactions'
                         logger.error('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -421,14 +400,14 @@ class AuditRule:
 
         # Save results of the audit
         elif rule_event == 'Save':
-            # Create audit record using data from the transaction audits
+            # Create an audit record object using data from the transaction audits
             db_record = settings.records.fetch_rule(self.record_type)
             record = mod_records.DatabaseRecord(self.record_type, db_record.record_layout, level=0)
 
             # Prepare the record data for audit record initialization
             mapping = {}
-            for field in self.record_data:
-                mapping[field] = self.record_data[field]
+            for field, value in self.record_data.items():
+                mapping[field] = value
 
             # Map transaction table summaries to audit record variables
             mapping = self.map_summary(mapping=mapping)
@@ -439,8 +418,13 @@ class AuditRule:
             # Combine the reference entries of all the transaction tables to pass to the audit record
             refs = {}
             for transaction_tab in self.transactions:
-                assoc_type = transaction_tab.association_type
+                #assoc_type = transaction_tab.association_type
+                assoc_type = transaction_tab.table.association_type
+
+                # Add current references for the given transaction, with state information (deleted, added, etc.)
                 ref_df = transaction_tab.table.references.data(reference=True, include_state=True)
+
+                # Add existing transaction references that were deleted during the audit, along with state information
                 ref_df = ref_df.append(transaction_tab.table.references.data(deleted=True, added=False, reference=True,
                                                                              include_state=True),
                                        ignore_index=True)
@@ -801,6 +785,7 @@ class AuditRule:
         summary_map = {}
         for tab in self.transactions:
             tab_name = tab.name
+            tab.filter_by_reference(inplace=True)
             summary = tab.table.summarize()
             for summary_column in summary:
                 summary_value = summary[summary_column]
@@ -891,27 +876,19 @@ class AuditRule:
 
                     # Create references for the records
 
-                    # Find any records that are already referenced
-                    record_ids = add_df[table.id_column].tolist()
-                    records_w_refs = table.has_reference(record_ids)
+                    # Find and filter out any records that are already referenced by the audit record
+                    #record_ids = add_df[table.id_column].tolist()
+                    record_ids = table.collection.get_id(indices=add_df.index)
+                    current_ref_ids = table.get_references(record_ids)
 
-                    # Remove records that are already referenced from the add dataframe
-                    if len(records_w_refs) > 0:
-                        msg = '{NUM} {TYPE} records were found to already be associated with an audit - these ' \
-                              'records will not be included in this current audit ({RECORDS})' \
-                            .format(NUM=len(records_w_refs), TYPE=tab.name, RECORDS=records_w_refs)
-                        mod_win2.popup_notice(msg)
-                        logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    records_w_refs = current_ref_ids.index
+                    add_df = add_df[~add_df[table.id_column].isin(records_w_refs)]
 
-                        add_df = add_df[~add_df[table.id_column].isin(records_w_refs)]
-
-                    # Add references for the remaining records to the references data
+                    # Add references for the remaining records
                     records_wo_refs = [i for i in record_ids if i not in records_w_refs]
-                    print('approved records without current associations:')
-                    print(records_wo_refs)
+                    record_type = self.record_type
                     for record_id in records_wo_refs:
-                        print('adding self reference for record {}'.format(record_id))
-                        table.add_reference(record_id, audit_id, self.record_type, approved=True)
+                        table.add_reference(record_id, audit_id, record_type, approved=True)
 
                     # Prepare the transaction records
                     add_df = add_df[dest_cols].rename(columns=column_map)
@@ -1034,14 +1011,7 @@ class AuditTransaction:
 
             raise AttributeError(msg)
 
-        try:
-            self.association_type = entry['AssociationType']
-        except KeyError:
-            msg = 'missing required parameter "AssociationType"'
-            logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise AttributeError(msg)
-
+        self.audit_id = None
         self.parameters = None
         self.id_components = []
 
@@ -1099,6 +1069,7 @@ class AuditTransaction:
         self.table.disable(window)
 
         # Reset dynamic attributes
+        self.audit_id = None
         self.parameters = None
         self.id_components = []
 
@@ -1184,9 +1155,11 @@ class AuditTransaction:
 
                     results['Success'] = False
                 else:
-                    delete_rows = self.filter_table()
+                    delete_rows = self.filter_by_rule()
+                    delete_rows += self.filter_by_reference()
+
                     if len(delete_rows) > 0:
-                        table.delete_rows(delete_rows)
+                        table.delete_rows(list(set(delete_rows)))
 
                     table.update_display(window)
             else:
@@ -1194,13 +1167,20 @@ class AuditTransaction:
 
         return results
 
-    def filter_table(self):
+    def filter_by_rule(self, inplace: bool = False):
         """
         Filter the data table by applying the filter rules specified in the configuration.
+
+        Arguments:
+            inplace (bool): filter table in place [Default: False].
+
+        Returns:
+            filtered_rows (list): list of row indices to be filtered according to the configured filter rules.
         """
         # Tab attributes
         filter_rules = self.filter_rules
-        df = self.table.data()
+        table = self.table
+        df = table.data()
 
         if df.empty or not filter_rules:
             return []
@@ -1230,14 +1210,62 @@ class AuditTransaction:
             else:
                 failed_rows.update(failed)
 
-        return list(failed_rows)
+        filtered_rows = list(failed_rows)
+        if inplace is True:
+            if len(filtered_rows) > 0:
+                table.delete_rows(filtered_rows)
 
-    def load_data(self, parameters, audit_id: str = None):
+        return filtered_rows
+
+    def filter_by_reference(self, inplace: bool = False):
         """
-        Load data from the database.
+        Filter rows with existing audit references with IDs that do not match the current audit record.
+
+        Arguments:
+            inplace (bool): filter table in place [Default: False].
+
+        Returns:
+            filtered_rows (list): list of row indices to be filtered according to the configured filter rules.
+        """
+        audit_id = self.audit_id
+        table = self.table
+        df = table.data()
+
+        # Find any records that are already referenced by a different audit record
+        print()
+        print('current references:')
+        record_ids = table.row_ids(indices=df.index)
+        current_ref_ids = table.get_references(record_ids)
+        print(current_ref_ids)
+
+        other_records = [invoice_id for invoice_id, ref_id in current_ref_ids.items() if ref_id != audit_id]
+        print('existing other records:')
+        print(other_records)
+
+        # Remove records that are already referenced from the add dataframe
+        if len(other_records) > 0:
+            msg = '{NUM} {TYPE} records were found to already be associated with an audit - these ' \
+                  'records will be excluded from the audit ({RECORDS})' \
+                .format(NUM=len(other_records), TYPE=self.name, RECORDS=','.join(other_records))
+            mod_win2.popup_notice(msg)
+            logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+        filtered_rows = table.collection.get_index(other_records)
+        if inplace is True:
+            if len(filtered_rows) > 0:
+                table.delete_rows(filtered_rows)
+
+        return filtered_rows
+
+    def initialize(self, parameters, audit_id: str = None):
+        """
+        Initialize the table.
         """
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
+
+        # Set the audit record ID
+        self.audit_id = audit_id
 
         # Load the transaction records
         logger.info('AuditTransaction {NAME}: attempting to load transaction records from the database based on '
@@ -1257,7 +1285,6 @@ class AuditTransaction:
 
             imported_ids = df[self.table.id_column].tolist()
             remaining_records = list(set(records).difference(imported_ids))
-            print('loading additional records associated with the audit: {}'.format(remaining_records))
 
             if len(remaining_records) > 0:
                 loaded_df = record_entry.load_records(remaining_records)

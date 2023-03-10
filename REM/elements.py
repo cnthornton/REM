@@ -708,6 +708,20 @@ class DataTable(RecordElement):
 
         return lengths
 
+    def _highlight_rows(self, df):
+        """
+        Determine row coloring based on annotation rules and other configuration settings.
+        Arguments:
+            df (DataFrame): dataframe of rows to act on.
+
+        Returns:
+            row_colors (list): list of tuples containing row index and corresponding hex code.
+        """
+        annotations = self.annotate_rows(df)
+        row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
+
+        return row_colors
+
     def _reset(self, window, reset_filters: bool = True, collapse: bool = True):
         """
         Reset the data table to default.
@@ -1310,8 +1324,7 @@ class DataTable(RecordElement):
 
         # Prepare annotations
         if len(annotations) < 1:  # highlight table rows using configured annotation rules
-            annotations = self.annotate_rows(df)
-            row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
+            row_colors = self._highlight_rows(df)
         else:  # use custom annotations to highlight table rows
             row_colors = [(i, j) for i, j in annotations.items()]
 
@@ -2521,7 +2534,7 @@ class RecordTable(DataTable):
 
             deleted (bool): include deleted rows [Default: False].
         """
-        row_ids = self.collection.row_ids(indices=indices, deleted=deleted)
+        row_ids = self.collection.get_id(indices=indices, deleted=deleted)
 
         return row_ids
 
@@ -2532,7 +2545,7 @@ class RecordTable(DataTable):
         Arguments:
             record_ids: list of record IDs contained in the table.
         """
-        indices = self.collection.record_index(record_ids)
+        indices = self.collection.get_index(record_ids)
 
         return indices
 
@@ -2748,8 +2761,8 @@ class RecordTable(DataTable):
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
-        existing_indices = collection.record_index(select_ids)
-        existing_ids = collection.row_ids(existing_indices, deleted=True)
+        existing_indices = collection.get_index(select_ids)
+        existing_ids = collection.get_id(existing_indices, deleted=True)
 
         logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
                                      .format(IDS=existing_ids, ROWS=existing_indices)))
@@ -2859,7 +2872,7 @@ class ComponentTable(RecordTable):
 
         if import_df is None:  # start with deleted rows
             import_df = collection.data(deleted=True)
-        current_ids = collection.row_ids()
+        current_ids = collection.get_id()
 
         logger.debug(self.format_log('importing rows'))
 
@@ -2924,8 +2937,8 @@ class ComponentTable(RecordTable):
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
-        existing_indices = collection.record_index(select_ids)
-        existing_ids = collection.row_ids(existing_indices, deleted=True)
+        existing_indices = collection.get_index(select_ids)
+        existing_ids = collection.get_id(existing_indices, deleted=True)
 
         logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
                                      .format(IDS=existing_ids, ROWS=existing_indices)))
@@ -3028,7 +3041,7 @@ class ComponentTable(RecordTable):
 
 class AssociationTable(RecordTable):
     """
-    Subclass of the records table, but for records with associated reference.
+    Subclass of the records table, but for records with associations of a given type.
 
     Attributes:
         name (str): table element configuration name.
@@ -3038,7 +3051,7 @@ class AssociationTable(RecordTable):
 
     def __init__(self, name, entry, parent=None):
         """
-        Initialize component table attributes.
+        Initialize association table attributes.
 
         Arguments:
             name (str): name of the configured table element.
@@ -3072,6 +3085,7 @@ class AssociationTable(RecordTable):
 
                 self.modifiers[modifier] = flag
 
+        # Subclass-specific attributes
         association_type = entry.get('AssociationType', entry.get('AssociationRule', None))
         if association_type is None:
             msg = 'missing required parameter "AssociationType"'
@@ -3081,7 +3095,44 @@ class AssociationTable(RecordTable):
         else:
             self.association_type = association_type
 
+        try:
+            self.highlight_referenced = bool(int(entry['HighlightReferenced']))
+        except (KeyError, ValueError):
+            self.highlight_referenced = False
+
         self.references = mod_col.ReferenceCollection(self.name, entry)
+
+    def _highlight_rows(self, df):
+        """
+        Determine row coloring based on annotation rules and other configuration settings.
+        Arguments:
+            df (DataFrame): dataframe of rows to act on.
+
+        Returns:
+            row_colors (list): list of tuples containing row index with corresponding hex code.
+        """
+        if df.empty:
+            return []
+
+        # Highlight rows with references, if desired
+        highlight_refs = self.highlight_referenced
+        if highlight_refs is True:
+            print(df['ReferenceID'])
+            print(df['ReferenceID'].dropna())
+            indices = df['ReferenceID'].dropna().index.tolist()
+            row_colors = [(i, mod_const.PASS_COLOR) for i in indices]
+        else:
+            indices = []
+            row_colors = []
+
+        # Find row colors based on configured annotation rules
+        annotation_rules = self.annotation_rules
+        annotations = self.annotate_rows(df)
+        for i, j in annotations.items():
+            if i not in indices:
+                row_colors.append((i, annotation_rules[j]['BackgroundColor']))
+
+        return row_colors
 
     def _aggregate(self, record_ids: list = None):
         """
@@ -3155,12 +3206,6 @@ class AssociationTable(RecordTable):
         ref_df = ref_df.reindex(index=df[id_col].tolist())
         ref_df = ref_df.set_index(df.index)
 
-        # print('indices of records data before merging:')
-        # print(df.index)
-
-        # print('indices of reference data before merging:')
-        # print(ref_df.index)
-
         # print('merging the records and the reference tables:')
         merged_df = df.join(ref_df, how='left')
 
@@ -3183,7 +3228,7 @@ class AssociationTable(RecordTable):
 
         df = records_data.delete(indices, inplace=inplace)
 
-        deleted_ids = records_data.row_ids(indices=indices)
+        deleted_ids = records_data.get_id(indices=indices)
         print('{}: removing records {} from the table'.format(self.name, deleted_ids))
         deleted_ref_inds = ref_data.get_index(deleted_ids)
         print('{}: also deleting references associated with the records at indices {} in the reference table'.format(
@@ -3208,7 +3253,7 @@ class AssociationTable(RecordTable):
         if import_df is None:
             #import_df = collection.data(current=False, deleted_only=True)
             import_df = collection.data(deleted=True)
-        current_ids = collection.row_ids()
+        current_ids = collection.get_id()
 
         logger.debug(self.format_log('importing rows'))
 
@@ -3273,8 +3318,8 @@ class AssociationTable(RecordTable):
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
-        existing_indices = collection.record_index(select_ids)
-        existing_ids = collection.row_ids(existing_indices, deleted=True)
+        existing_indices = collection.get_index(select_ids)
+        existing_ids = collection.get_id(existing_indices, deleted=True)
 
         logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
                                      .format(IDS=existing_ids, ROWS=existing_indices)))
@@ -3359,7 +3404,7 @@ class AssociationTable(RecordTable):
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
-        to_import = self.collection.row_ids() if not isinstance(record_ids, list) else record_ids
+        to_import = self.collection.get_id() if not isinstance(record_ids, list) else record_ids
 
         # Import reference entries from the database
         try:

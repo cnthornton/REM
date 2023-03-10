@@ -2046,6 +2046,10 @@ class DatabaseRecord:
                     logger.debug('RecordGroup {NAME}: record {ID} has no current "{TYPE}" associations'
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
+                else:
+                    n_ref = ref_data.shape[0]
+                    logger.debug('RecordGroup {NAME}: found {N} associations of type "{TYPE}"'
+                                 .format(NAME=self.name, N=n_ref, PARAM=element_name, TYPE=assoc_rule))
 
                 import_ids = ref_data['ReferenceID']
 
@@ -2063,17 +2067,19 @@ class DatabaseRecord:
 
                 # Load the reference entries defined by the given association rule
                 if assoc_rule in references:  # use provided reference entries instead of importing from reference table
-                    print('using provided set of references instead of importing from the database')
                     assoc_refs = references[assoc_rule]
                     ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
                 else:
-                    print('importing references from the database')
                     ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
                 if ref_data.empty:
                     logger.debug('RecordGroup {NAME}: record {ID} has no current "{TYPE}" associations'
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
+                else:
+                    n_ref = ref_data.shape[0]
+                    logger.debug('RecordGroup {NAME}: found {N} associations of type "{TYPE}"'
+                                 .format(NAME=self.name, N=n_ref, PARAM=element_name, TYPE=assoc_rule))
 
                 record_element.append(ref_data, new=False)
 
@@ -2097,7 +2103,6 @@ class DatabaseRecord:
         # Update any dependent record elements
         record_values = self.export_values(header=False).to_dict()
         try:
-            #dependent_elements = self.fetch_element('dependent', by_type=True)
             dependent_elements = [i for i in record_elements if i.is_type('dependent')]
         except KeyError:
             pass

@@ -1389,7 +1389,7 @@ class RecordCollection(DataCollection):
                 logger.debug('DataCollection {NAME}: modifying {NROW} entries in the collection'
                              .format(NAME=self.name, NROW=mod_df.shape[0]))
 
-                real_inds = self.record_index(mod_df.index.tolist())
+                real_inds = self.get_index(mod_df.index.tolist())
                 mod_df = mod_df.reset_index().set_index(pd.Index(real_inds))
                 df.reset_index(inplace=True)
 
@@ -1452,12 +1452,15 @@ class RecordCollection(DataCollection):
 
         return ref_df
 
-    def record_index(self, record_ids):
+    def get_index(self, record_ids):
         """
         Return a list of collection indices corresponding to the supplied record IDs.
 
         Arguments:
-            record_ids: list of record IDs contained in the collection.
+            record_ids (list): list of record IDs contained in the collection.
+
+        Returns:
+            indices (list): list of dataframe indices corresponding to the supplied record IDs.
         """
         df = self.df
 
@@ -1470,7 +1473,7 @@ class RecordCollection(DataCollection):
 
         return indices
 
-    def row_ids(self, indices: list = None, deleted: bool = False):
+    def get_id(self, indices: list = None, deleted: bool = False):
         """
         Return a list of the current record IDs stored in the collection.
 

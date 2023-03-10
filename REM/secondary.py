@@ -259,12 +259,24 @@ def debug_window():
 def record_window(record, view_only: bool = False, modify_database: bool = True):
     """
     Display the record window.
+
+    Arguments:
+        record (DatabaseRecord): initialized database record object.
+
+        view_only (bool): open the record window in view only mode [Default: False].
+
+        modify_database (bool): allow the record's database entry to be modified from the record window [default: True].
+
+    Returns:
+        record (DatabaseRecord): database record object with any changes made while open in the record window.
     """
     # Initial window size
     min_w, min_h = (int(mod_const.WIN_WIDTH * 0.5), int(mod_const.WIN_HEIGHT * 0.5))
 
     record_id = record.record_id()
+    record_type = record.name
     record_level = record.level
+    is_new = record.new
 
     # GUI layout
 
@@ -279,15 +291,24 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     font_h = mod_const.HEADING_FONT
 
     # User permissions
-    record_entry = settings.records.fetch_rule(record.name)
+    record_entry = settings.records.fetch_rule(record_type)
 
-    mod_perm = True if ((user.check_permission(record_entry.permissions['edit']) and record.new is False) or
-                        (user.check_permission(record_entry.permissions['create']) and record.new is True)) else False
-    del_perm = True if user.check_permission(record_entry.permissions['delete']) and record.new is False else False
+    mod_perm = True if ((user.check_permission(record_entry.permissions['edit']) and is_new is False) or
+                        (user.check_permission(record_entry.permissions['create']) and is_new is True)) else False
+    del_perm = True if user.check_permission(record_entry.permissions['delete']) and is_new is False else False
+
+    logger.debug(f'{record_type} {record_id}: opening display window at level {record_level}')
+    logger.debug(f'{record_type} {record_id}: record is marked as view only: {view_only}')
+    logger.debug(f'{record_type} {record_id}: user has modify permissions: {mod_perm}')
+    logger.debug(f'{record_type} {record_id} user has delete permissions: {del_perm}')
 
     can_save = True if mod_perm and record_level < 1 and view_only is False and modify_database is True else False
-    can_accept = True if mod_perm and record_level < 2 and view_only is False and modify_database is False else False
     can_delete = True if del_perm and record_level < 1 and view_only is False and modify_database is True else False
+    can_accept = True if mod_perm and record_level < 2 and view_only is False and can_save is False else False
+    logger.debug(f'{record_type} {record_id}: record is marked as savable to the database: {modify_database}')
+    logger.debug(f'{record_type} {record_id}: record can be deleted: {can_delete}')
+    logger.debug(f'{record_type} {record_id}: record changes can be approved: {can_accept}')
+    logger.debug(f'{record_type} {record_id}: record changes can be directly saved: {can_save}')
 
     gen_report = True if record.report is not None and (mod_perm or del_perm) else False
 
@@ -373,8 +394,8 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
         win_w, win_h = [int(i) for i in window.size]
         if win_w != current_w or win_h != current_h:
-            logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
-            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
+            logger.debug(f'{record_type} {record_id}: current window size is {current_w} x {current_h}')
+            logger.debug(f'{record_type} {record_id}: new window size is {win_w} x {win_h}')
 
             # Update sizable elements
             record_w = win_w if win_w >= min_w else min_w
@@ -444,7 +465,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             # Save the record to the database table
             saved = record.save()
             if saved is False:
-                popup_error('failed to save record {ID} - see log for details'.format(ID=record_id))
+                popup_error(f'failed to save record {record_id} - see log for details')
                 continue
             else:
                 # Remove unsaved IDs associated with the record
@@ -455,7 +476,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
         if event == '-DELETE-':
             deleted = record.delete()
             if deleted is False:
-                popup_error('failed to delete record {ID} - see log for details'.format(ID=record_id))
+                popup_error(f'failed to delete record {record_id} - see log for details')
                 continue
             else:
                 # Remove unsaved IDs associated with the record
@@ -477,12 +498,12 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                 save_report = record.save_report(outfile)
             except Exception as e:
                 msg = 'failed to generate the record report'
-                logger.exception('Record {ID}: {MSG} - {ERR}'.format(ID=record_id, MSG=msg, ERR=e))
-                popup_error('{MSG} - see log for details'.format(MSG=msg))
+                logger.exception(f'{record_type} {record_id}: {msg} - {e}')
+                popup_error(f'{msg} - see log for details')
             else:
                 if not save_report:
                     msg = 'failed to generate the record report'
-                    popup_error('{MSG} - see log for details'.format(MSG=msg))
+                    popup_error(f'{msg} - see log for details')
 
             continue
 
@@ -491,10 +512,9 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             try:
                 record.run_event(window, event, values)
             except Exception as e:
-                msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}' \
-                    .format(ID=record_id, EVENT=event, ERR=e)
+                msg = f'{record_type} {record_id}: failed to run record event {event} - {e}'
                 logger.exception(msg)
-                popup_notice('failed to run event for record {}'.format(record_id))
+                popup_notice(f'failed to run event for record {record_id}')
 
                 continue
 
@@ -515,7 +535,7 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
 
         title (str): title of the parameter window.
 
-        win_size (tuple): optional window size parameters (width, height).
+        win_size (tuple): optional fixed window size (width, height).
     """
     # Initial window size
     if win_size:
@@ -792,7 +812,13 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
 
 def add_note_window(note: str = None):
     """
-    Display a window with a multiline window for capturing a custom note.
+    Display a window with a multiline element for capturing a custom note.
+
+    Arguments:
+        note (str): existing text to display.
+
+    Returns:
+        note (str): modified text.
     """
     note_text = '' if not note else note
 
@@ -878,6 +904,9 @@ def add_note_window(note: str = None):
 def database_importer_window(win_size: tuple = None):
     """
     Display the database importer window.
+
+    Arguments:
+        win_size (tuple): fixed window size (width, height).
     """
     pd.set_option('display.max_columns', None)
 
@@ -2388,7 +2417,8 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     """
     Display window for obtaining values for a ranged parameter.
     """
-    saved_value = current if current and len(current) == 2 else [None, None]
+    saved_value = list(current) if (isinstance(current, tuple) or isinstance(current, list)) and len(current) == 2 \
+        else [None, None]
     operators = ['>', '<', '>=', '<=', '=']
 
     # Element settings
