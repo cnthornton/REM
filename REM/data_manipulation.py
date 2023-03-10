@@ -60,7 +60,6 @@ def format_value(value, dtype, date_format: str = None):
 
         date_format (str): formatted date string to use instead of the program default.
     """
-    print(value)
     if dtype in ('date', 'datetime', 'timestamp', 'time'):
         dt = settings.date_format if date_format is None else date_format
         value = np.datetime64(pd.to_datetime(value, format=dt, utc=False))

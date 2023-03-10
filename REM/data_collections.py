@@ -95,14 +95,31 @@ class DataVector:
         Arguments:
             input_value: value input into the GUI element.
         """
+        fv = mod_dm.format_value
+
         current_value = self.value
+        aliases = {j: i for i, j in self.aliases.items()}
+        dtype = self.dtype
+
         logger.debug('DataVector {NAME}: updating the value of the data vector with existing value {VAL}'
                      .format(NAME=self.name, VAL=current_value))
 
         if input_value == '' or pd.isna(input_value):
             new_value = None
+        elif input_value in aliases:
+            # Obtain the real value from an alias, if applicable
+            new_value = fv(aliases[input_value], dtype)
         else:
-            new_value = mod_dm.format_value(input_value, self.dtype)
+            fmt_value = fv(input_value, dtype)
+            try:
+                fmt_value_item = fmt_value.item()
+            except AttributeError:
+                new_value = fmt_value
+            else:
+                if fmt_value_item in aliases:
+                    new_value = fv(aliases[fmt_value_item], dtype)
+                else:
+                    new_value = fmt_value
 
         edited = False
         if current_value != new_value:
