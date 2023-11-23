@@ -97,8 +97,9 @@ class AuditRule:
         try:
             transaction_entries = entry['AuditTransactions']
         except KeyError:
-            msg = 'AuditRule {NAME}: missing required parameter "AuditTransactions"'.format(NAME=name)
-            mod_win2.popup_error(msg)
+            msg = _('missing required parameter "AuditTransactions"')
+            #msg = 'AuditRule {NAME}: missing required parameter "AuditTransactions"'.format(NAME=name)
+            mod_win2.popup_error(f'AuditRule {name}: {msg}')
 
             raise AttributeError(msg)
 
@@ -270,7 +271,7 @@ class AuditRule:
                 # Enable the next tab if an audit event was successful
                 if event_results['AuditEvent']:
                     if not event_results['Success']:
-                        msg = 'auditing of transaction {TITLE} failed - see log for details'.format(TITLE=tab.title)
+                        msg = _('auditing of transaction {TITLE} failed - see log for details').format(TITLE=tab.title)
                         mod_win2.popup_error(msg)
 
                         return current_rule
@@ -299,11 +300,11 @@ class AuditRule:
                     if next_index == final_index:
                         # Verify that the user has the right permissions to create an audit
                         if not user.check_permission(self.permissions['create']):
-                            msg = '"{UID}" does not have "create" permissions for the audit panel. An audit record ' \
-                                  'cannot be created without this permission. Please contact the administrator if ' \
-                                  'you suspect that this is in error'.format(UID=user.uid)
+                            msg = _('"{UID}" does not have "create" permissions for the audit panel. An audit record '
+                                    'cannot be created without this permission. Please contact the administrator if '
+                                    'you suspect that this is in error').format(UID=user.uid)
                             logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                            mod_win2.popup_error('warning - {MSG}'.format(MSG=msg))
+                            mod_win2.popup_error(msg)
                         else:
                             logger.info('AuditRule {NAME}: all transaction audits have been performed - preparing the '
                                         'audit record'.format(NAME=self.name))
@@ -322,7 +323,8 @@ class AuditRule:
         if rule_event == 'Cancel':
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
-                msg = 'Transaction audit is currently in progress. Are you sure you would like to quit without saving?'
+                msg = _('Transaction audit is currently in progress. Are you sure you would like to quit without '
+                        'saving?')
                 selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
@@ -348,7 +350,7 @@ class AuditRule:
                 audit_exists = self.load_record(params)
                 if audit_exists is True:
                     if user.check_permission(self.permissions['edit']) is False:
-                        msg = 'Additional permissions are required to edit an existing audit.'
+                        msg = _('Additional permissions are required to edit an existing audit.')
                         logger.warning('AuditRule {NAME}: audit initialization failed - {MSG}'
                                        .format(NAME=self.name, MSG=msg))
                         mod_win2.popup_error(msg)
@@ -356,8 +358,8 @@ class AuditRule:
 
                         return current_rule
                     else:
-                        msg = 'An audit has already been performed using these parameters. Would you like to edit ' \
-                              'the existing audit?'
+                        msg = _('An audit has already been performed using these parameters. Would you like to edit '
+                                'the existing audit?')
                         user_input = mod_win2.popup_confirm(msg)
                         if not user_input == 'OK':
                             current_rule = self.reset_rule(window, current=True)
@@ -375,9 +377,9 @@ class AuditRule:
                     try:
                         transaction_tab.initialize(params, audit_id=record_id)
                     except ImportError as e:
-                        msg = 'failed to initialize the audit transactions'
+                        msg = _('failed to initialize the audit transactions')
                         logger.error('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                        mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
+                        mod_win2.popup_error(_('{MSG} - see log for details').format(MSG=msg))
                         current_rule = self.reset_rule(window, current=True)
 
                         return current_rule
@@ -450,7 +452,7 @@ class AuditRule:
                                             file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
                 if not outfile:
-                    msg = 'Please select an output file before continuing'
+                    msg = _('Please select an output file before continuing')
                     mod_win2.popup_error(msg)
 
                     return current_rule
@@ -459,13 +461,13 @@ class AuditRule:
                 try:
                     save_status = record.save(save_all=True)
                 except Exception as e:
-                    msg = 'database save failed - {ERR}'.format(ERR=e)
+                    msg = _('database save failed - {ERR}').format(ERR=e)
                     mod_win2.popup_error(msg)
 
                     return current_rule
                 else:
                     if save_status is False:
-                        msg = 'Database save failed'
+                        msg = _('Database save failed - see log for details')
                         mod_win2.popup_error(msg)
 
                         return current_rule
@@ -473,15 +475,15 @@ class AuditRule:
                 try:
                     report_status = record.save_report(outfile)
                 except Exception as e:
-                    msg = 'failed to save the audit report to {FILE}'.format(FILE=outfile)
+                    msg = _('failed to save the audit report to {FILE}').format(FILE=outfile)
                     logger.exception('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                    mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
+                    mod_win2.popup_error('{MSG} - see log for details').format(MSG=msg)
                 else:
                     if report_status is False:
-                        msg = 'failed to save the audit report to {FILE}'.format(FILE=outfile)
+                        msg = _('failed to save the audit report to {FILE}').format(FILE=outfile)
                         mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
                     else:
-                        msg = 'audit record was successfully saved to the database'
+                        msg = _('audit record was successfully saved to the database')
                         logger.info('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         mod_win2.popup_notice(msg)
 
@@ -727,8 +729,8 @@ class AuditRule:
         try:
             import_df = record_entry.import_records(filter_params=params)
         except Exception as e:
-            mod_win2.popup_error('Attempt to import data from the database failed. Use the debug window for more '
-                                 'information')
+            msg = _('Attempt to import data from the database failed. Use the debug window for more information')
+            mod_win2.popup_error(msg)
             raise IOError('failed to import data from the database for audit record of type {NAME} - {ERR}'
                           .format(NAME=record_type, ERR=e))
         else:
@@ -1244,9 +1246,9 @@ class AuditTransaction:
 
         # Remove records that are already referenced from the add dataframe
         if len(other_records) > 0:
-            msg = '{NUM} {TYPE} records were found to already be associated with an audit - these ' \
-                  'records will be excluded from the audit ({RECORDS})' \
-                .format(NUM=len(other_records), TYPE=self.name, RECORDS=','.join(other_records))
+            msg = _('{NUM} {TYPE} records were found to already be associated with an audit - these records will be '
+                    'excluded from the audit ({RECORDS})').format(NUM=len(other_records), TYPE=self.name,
+                                                                  RECORDS=','.join(other_records))
             mod_win2.popup_notice(msg)
             logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -1382,7 +1384,7 @@ class AuditTransaction:
                     try:
                         prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
                     except ValueError:
-                        msg = 'inconsistent format found in previous record ID {ID}'.format(ID=prev_id)
+                        msg = _('inconsistent format found in previous record ID {ID}').format(ID=prev_id)
                         mod_win2.popup_notice(msg)
                         logger.warning('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         logger.warning('AuditTransaction {NAME}: record with unknown format is {ID}'
@@ -1442,7 +1444,7 @@ class AuditTransaction:
                 try:
                     record_no = int(self.get_id_component(record_id, 'variable'))
                 except ValueError:
-                    msg = 'inconsistent format found in record ID {ID}'.format(ID=record_id)
+                    msg = _('inconsistent format found in record ID {ID}').format(ID=record_id)
                     mod_win2.popup_notice(msg)
                     logger.warning('AuditTransaction {NAME}: ID with unknown format is {ID}'
                                    .format(NAME=self.name, ID=record_id))
@@ -1486,7 +1488,7 @@ class AuditTransaction:
                 try:
                     current_number_comp = int(self.get_id_component(current_id, 'variable'))
                 except ValueError:
-                    msg = 'inconsistent format found in record ID {ID}'.format(ID=current_id)
+                    msg = _('inconsistent format found in record ID {ID}').format(ID=current_id)
                     mod_win2.popup_notice(msg)
                     logger.warning('AuditTransaction {NAME}: ID with unknown format is {ID}'
                                    .format(NAME=self.name, ID=current_df[current_df[pkey] == current_id]))

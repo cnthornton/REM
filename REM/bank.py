@@ -2383,6 +2383,11 @@ def expand_search(row, ref_df, ref_map, comp_df=None, expand_level: int = 0, clo
 
         # Find exact matches between account record and the associated account records using relevant cols
         acct_matches = assoc_df[~assoc_df.index.isin(failed_indices)]
+
+        # Keep only the first match for matches that are duplicate on the comparison columns
+        acct_matches = acct_matches.drop_duplicates(subset=assoc_rules.keys())
+
+        # Append matches to the account to the dataset of all matches
         matches = matches.append(acct_matches)
 
     nmatch = matches.shape[0]
@@ -2448,6 +2453,7 @@ def expand_search(row, ref_df, ref_map, comp_df=None, expand_level: int = 0, clo
                 .format(ROW=row_index)
             logger.debug(msg)
 
+            print(matches)
             results = expand_search(row, matches, ref_map, comp_df=comp_df, expand_level=expand_level + 1)
         else:  # zero matches were found in the previous iteration
             # Find the best match by searching for nearest like value on the closest match fields
